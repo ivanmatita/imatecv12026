@@ -1,0 +1,7 @@
+{
+  "name": "SOFT IMATEC 1",
+  "description": "Imatec",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
