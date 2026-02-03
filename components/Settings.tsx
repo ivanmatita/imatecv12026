@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { DocumentSeries, User, ViewState, WorkLocation, CashRegister, TaxRate, Bank, Metric, Company } from '../types';
 import { generateId, formatDate, formatCurrency, generateUUID } from '../utils';
 import { supabase } from '../services/supabaseClient';
+import { listarLocaisTrabalho, criarLocalTrabalho } from '../services/supabaseClient';
 import {
     Users, FileText, Plus, Trash2, Save, Pencil,
     X, UserPlus, Landmark, Ruler, RefreshCw, Loader2, Calculator,
@@ -45,10 +46,66 @@ const Settings: React.FC<SettingsProps> = ({
     metrics = [], onSaveMetric, onDeleteMetric,
     currentCompany, onSaveCompany
 }) => {
-    const [activeTab, setActiveTab] = useState<'COMPANY' | 'SERIES' | 'USERS' | 'BANCOS' | 'METRICAS' | 'TAXES'>('COMPANY');
+    const [activeTab, setActiveTab] = useState<'COMPANY' | 'SERIES' | 'USERS' | 'BANCOS' | 'METRICAS' | 'TAXES' | 'LOCAIS'>('COMPANY');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [syncWarning, setSyncWarning] = useState<string | null>(null);
+
+    // Work Location State
+    const [dbWorkLocations, setDbWorkLocations] = useState<WorkLocation[]>([]);
+    const [isWorkLocationModalOpen, setIsWorkLocationModalOpen] = useState(false);
+    const [newWorkLocation, setNewWorkLocation] = useState({ name: '', address: '', type: 'LOJA' });
+
+    useEffect(() => {
+        if (activeTab === 'LOCAIS') {
+            loadWorkLocations();
+        }
+    }, [activeTab]);
+
+    async function loadWorkLocations() {
+        setIsLoading(true);
+        try {
+            const data = await listarLocaisTrabalho();
+            if (data) {
+                const mapped: WorkLocation[] = data.map((d: any) => ({
+                    id: d.id,
+                    name: d.nome || d.name,
+                    address: d.endereco || d.address || '',
+                    type: d.tipo || d.type || 'LOJA',
+                    managerId: d.responsavel_id || '',
+                    phone: d.telefone || '',
+                    email: d.email || ''
+                }));
+                setDbWorkLocations(mapped);
+            }
+        } catch (e: any) {
+            console.error("Erro ao carregar locais:", e);
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    async function handleAddWorkLocation() {
+        if (!newWorkLocation.name) return alert("Nome é obrigatório");
+        setIsLoading(true);
+        try {
+            const payload = {
+                nome: newWorkLocation.name,
+                endereco: newWorkLocation.address,
+                tipo: newWorkLocation.type,
+                empresa_id: currentCompany.id
+            };
+            await criarLocalTrabalho(payload);
+            await loadWorkLocations();
+            setIsWorkLocationModalOpen(false);
+            setNewWorkLocation({ name: '', address: '', type: 'LOJA' });
+            alert("Local de trabalho registado!");
+        } catch (e: any) {
+            alert("Erro: " + e.message);
+        } finally {
+            setIsLoading(false);
+        }
+    }
 
     // Modals
     const [isBankModalOpen, setIsBankModalOpen] = useState(false);
@@ -469,7 +526,8 @@ const Settings: React.FC<SettingsProps> = ({
                         { id: 'USERS', icon: Users, label: 'Utilizadores' },
                         { id: 'BANCOS', icon: Landmark, label: 'Bancos' },
                         { id: 'METRICAS', icon: Ruler, label: 'Métricas' },
-                        { id: 'TAXES', icon: Calculator, label: 'Taxas' }
+                        { id: 'TAXES', icon: Calculator, label: 'Taxas' },
+                        { id: 'LOCAIS', icon: MapPin, label: 'Locais' }
                     ].map((tab) => (
                         <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-4 py-2 rounded-lg font-bold whitespace-nowrap text-[10px] uppercase tracking-widest border transition-all ${activeTab === tab.id ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
                             <tab.icon size={14} /> {tab.label}
@@ -647,6 +705,64 @@ const Settings: React.FC<SettingsProps> = ({
             )}
 
             {activeTab === 'TAXES' && <TaxTable onClose={() => setActiveTab('SERIES')} onTaxRatesUpdate={onTaxRatesUpdate} />}
+
+            {activeTab === 'LOCAIS' && (
+                <div className="bg-white border border-slate-300 rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95">
+                    <div className="p-5 flex justify-between items-center bg-slate-900 text-white">
+                        <h3 className="font-black text-xs uppercase tracking-[3px] flex items-center gap-3"><MapPin size={18} className="text-blue-400" /> LOCAIS DE TRABALHO</h3>
+                        <button onClick={() => setIsWorkLocationModalOpen(true)} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition shadow-lg">
+                            <Plus size={16} /> Novo Local
+                        </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-slate-50 text-slate-500 font-black uppercase text-[9px] border-b">
+                                <tr><th className="p-4">Nome</th><th className="p-4">Endereço</th><th className="p-4">Tipo</th><th className="p-4 text-center">Opções</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {dbWorkLocations.map(l => (
+                                    <tr key={l.id} className="hover:bg-blue-50 transition-colors font-bold">
+                                        <td className="p-4 text-slate-800 uppercase tracking-tighter">{l.name}</td>
+                                        <td className="p-4 text-slate-600">{l.address}</td>
+                                        <td className="p-4 text-slate-600"><span className="bg-slate-100 px-2 py-1 rounded text-[10px] uppercase">{l.type}</span></td>
+                                        <td className="p-4 text-center"><button onClick={() => { }} className="text-red-500 hover:scale-110 transition-transform"><Trash2 size={18} /></button></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {isWorkLocationModalOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-6">
+                        <h3 className="text-lg font-bold mb-4 uppercase">Novo Local de Trabalho</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold uppercase mb-1">Nome do Local</label>
+                                <input className="w-full p-2 border rounded" value={newWorkLocation.name} onChange={e => setNewWorkLocation({ ...newWorkLocation, name: e.target.value })} placeholder="Nome (Ex: Loja Central)" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold uppercase mb-1">Endereço</label>
+                                <input className="w-full p-2 border rounded" value={newWorkLocation.address} onChange={e => setNewWorkLocation({ ...newWorkLocation, address: e.target.value })} placeholder="Endereço Completo" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold uppercase mb-1">Tipo</label>
+                                <select className="w-full p-2 border rounded" value={newWorkLocation.type} onChange={e => setNewWorkLocation({ ...newWorkLocation, type: e.target.value })}>
+                                    <option value="LOJA">Loja</option>
+                                    <option value="ARMAZEM">Armazém</option>
+                                    <option value="ESCRITORIO">Escritório</option>
+                                </select>
+                            </div>
+                            <div className="flex gap-2 pt-4">
+                                <button onClick={() => setIsWorkLocationModalOpen(false)} className="flex-1 p-2 border rounded text-slate-500 font-bold uppercase text-xs">Cancelar</button>
+                                <button onClick={handleAddWorkLocation} disabled={isLoading} className="flex-1 p-2 bg-blue-600 text-white rounded font-bold uppercase text-xs hover:bg-blue-700">Registar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* MODALS COM DESIGN PROFISSIONAL E LABELS/PLACEHOLDERS INTEGRADOS */}
 

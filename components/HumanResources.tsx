@@ -14,7 +14,7 @@ import {
     Clock, Shield, LayoutDashboard, ChevronDown, ListCheck,
     Gavel, HeartHandshake, Eye, Ruler, Gift, Wallet, TrendingUp,
     Sparkles, Database, ArrowLeft, ChevronRight, Save, Info, Zap,
-    Edit3, Trash, User, List, ShieldCheck, ArrowRightLeft, Edit
+    Edit3, Trash, User, List, ShieldCheck, ArrowRightLeft, Edit, Settings
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import SalaryMap from './SalaryMap';
@@ -24,6 +24,7 @@ import ProfessionManager from './ProfessionManager';
 import Employees from './Employees';
 import TransferOrderModal from './TransferOrderModal';
 import ProcessSalary from './ProcessSalary';
+import SalaryProcessingModal from './SalaryProcessingModal';
 
 interface HumanResourcesProps {
     employees: Employee[];
@@ -46,6 +47,8 @@ interface HumanResourcesProps {
     onPrintSlip?: (emp: Employee) => void;
     cashRegisters?: CashRegister[];
     onUpdateCashRegister?: (cr: CashRegister) => void;
+    initialTab?: 'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO' | 'SALARY_MODAL';
+    onToggleSidebarTheme?: (isWhite: boolean) => void;
 }
 
 const HumanResources: React.FC<HumanResourcesProps> = ({
@@ -57,9 +60,14 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     workLocations,
     onPrintSlip,
     cashRegisters = [],
-    onUpdateCashRegister
+    onUpdateCashRegister,
+    initialTab,
+    onToggleSidebarTheme
 }) => {
-    const [activeTab, setActiveTab] = useState<'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO'>('ASSIDUIDADE');
+    const [activeTab, setActiveTab] = useState<'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO'>(
+        initialTab === 'SALARY_MODAL' ? 'ASSIDUIDADE' : (initialTab || 'ASSIDUIDADE') as any
+    );
+    const [showProcessingModal, setShowProcessingModal] = useState(initialTab === 'SALARY_MODAL');
     const [processingState, setProcessingState] = useState<'LIST' | 'DETAILED_ATTENDANCE' | 'SALARY_RESULT'>('LIST');
     const [activeEmployee, setActiveEmployee] = useState<Employee | null>(null);
     const [currentAttendance, setCurrentAttendance] = useState<Record<number, DailyAttendance>>({});
@@ -67,12 +75,14 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
     const [editSlip, setEditSlip] = useState<SalarySlip | null>(null);
     const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
+    const [selectedEmployeeForModal, setSelectedEmployeeForModal] = useState<string | null>(null);
+    const [showTransferOrder, setShowTransferOrder] = useState<boolean>(false);
+    const [processingInitialData, setProcessingInitialData] = useState<{ absences: number; extraHours: number; notes: string; } | null>(null);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [processingMonth, setProcessingMonth] = useState(new Date().getMonth() + 1);
     const [processingYear, setProcessingYear] = useState(new Date().getFullYear());
     const [isProcessing, setIsProcessing] = useState(false);
-    const [showTransferOrder, setShowTransferOrder] = useState<TransferOrder | null>(null);
     const [showTaxMaps, setShowTaxMaps] = useState(false);
     const [showReceipts, setShowReceipts] = useState(false);
 
@@ -96,13 +106,10 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
         const initialAtt: Record<number, DailyAttendance> = {};
         for (let d = 1; d <= daysInMonth; d++) {
             initialAtt[d] = {
-                day: d,
-                present: true,
-                worked: true,
-                hours: 8,
-                extraHours: 0,
-                absences: 0,
-                lateMinutes: 0
+                status: 'SERVICO',
+                overtimeHours: 0,
+                lostHours: 0,
+                location: '1'
             };
         }
         setCurrentAttendance(initialAtt);
@@ -110,10 +117,10 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     };
 
     const calculateSlip = (emp: Employee, att: Record<number, DailyAttendance>): SalarySlip => {
-        const totalWorkedDays = Object.values(att).filter(d => d.worked).length;
-        const totalAbsences = Object.values(att).reduce((sum, d) => sum + (d.absences || 0), 0);
-        const totalHours = Object.values(att).reduce((sum, d) => sum + (d.hours || 0), 0);
-        const totalExtraHours = Object.values(att).reduce((sum, d) => sum + (d.extraHours || 0), 0);
+        const totalWorkedDays = Object.values(att).filter(d => d.status === 'SERVICO').length;
+        const totalAbsences = Object.values(att).filter(d => d.status === 'FALTA_INJUST').length;
+        // Approximation if needed, but following types:
+        const totalExtraHours = Object.values(att).reduce((sum, d) => sum + (d.overtimeHours || 0), 0);
 
         const profession = professions.find(p => p.id === emp.professionId);
         const baseSalary = profession?.baseSalary || 0;
@@ -133,53 +140,63 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
         const subsidyFood = emp.subsidyFood || 0;
         const subsidyTransport = emp.subsidyTransport || 0;
 
-        const taxableIncome = grossSalary + subsidyVacation + subsidyChristmas + subsidyHousing + allowances;
+        const coreTaxable = grossSalary + subsidyVacation + subsidyChristmas + subsidyHousing + allowances;
         const exemptIncome = subsidyFood + subsidyTransport;
 
-        const inss = calculateINSS(taxableIncome);
-        const irt = calculateIRT(taxableIncome - inss);
+        const inss = calculateINSS(coreTaxable, subsidyFood, subsidyTransport);
+        const irt = calculateIRT(coreTaxable, inss, subsidyFood, subsidyTransport);
 
         const salaryAdjustments = emp.salaryAdjustments || 0;
         const penalties = emp.penalties || 0;
         const advances = emp.advances || 0;
 
         const totalDeductions = inss + irt + penalties + advances;
-        const netSalary = taxableIncome + exemptIncome + salaryAdjustments - totalDeductions;
+        const netTotal = coreTaxable + subsidyFood + subsidyTransport + salaryAdjustments - totalDeductions;
 
         return {
-            id: generateId(),
             employeeId: emp.id,
             employeeName: emp.name,
+            employeeRole: emp.role,
             month: processingMonth,
             year: processingYear,
             baseSalary,
-            grossSalary,
-            netSalary: roundToNearestBank(netSalary),
-            subsidyVacation,
-            subsidyChristmas,
-            subsidyHousing,
             allowances,
-            subsidyFood,
+            bonuses: 0,
+            subsidies: exemptIncome + subsidyVacation + subsidyChristmas + subsidyHousing,
             subsidyTransport,
+            subsidyFood,
+            subsidyFamily: emp.subsidyFamily || 0,
+            subsidyHousing,
+            absences: totalAbsences,
+            advances,
+            penalties,
+            grossTotal: coreTaxable + exemptIncome,
             inss,
             irt,
-            totalDeductions,
-            workDays: totalWorkedDays,
-            absences: totalAbsences,
-            extraHours: totalExtraHours,
-            salaryAdjustments,
-            penalties,
-            advances,
-            cashRegisterId: selectedCashRegisterId,
+            netTotal: roundToNearestBank(netTotal),
+            daysWorked: totalWorkedDays,
+            overtimeHours: totalExtraHours,
             processedAt: new Date().toISOString()
-        };
+        } as any; // Using any temporarily if types are still drifting, but attempting match
     };
 
     const handleProcessDetailed = () => {
         if (!activeEmployee) return;
-        const slip = calculateSlip(activeEmployee, currentAttendance);
-        setEditSlip(slip);
-        setProcessingState('SALARY_RESULT');
+
+        const totalAbsences = Object.values(currentAttendance).filter(d => d.status === 'FALTA_INJUST').length;
+        const totalExtraHours = Object.values(currentAttendance).reduce((sum, d) => sum + (d.overtimeHours || 0), 0);
+
+        // Pass data to modal
+        setProcessingInitialData({
+            absences: totalAbsences,
+            extraHours: totalExtraHours,
+            notes: '' // DailyAttendance type does not have a 'notes' field, setting to empty string
+        });
+
+        // Redirect to new Salary Processing Modal (Recibo Salario) as requested
+        setSelectedEmployeeForModal(activeEmployee.id);
+        setShowProcessingModal(true);
+        if (onToggleSidebarTheme) onToggleSidebarTheme(true);
     };
 
     const handleConfirmFinalProcess = async (finalSlip: SalarySlip) => {
@@ -197,16 +214,16 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                 if (cashReg) {
                     const updatedCashReg = {
                         ...cashReg,
-                        balance: cashReg.balance - finalSlip.netSalary
+                        balance: cashReg.balance - (finalSlip.netTotal || 0)
                     };
                     onUpdateCashRegister(updatedCashReg);
                 }
             }
 
-            alert('Processamento concluído com sucesso!');
-            setProcessingState('LIST');
-            setActiveEmployee(null);
-            setEditSlip(null);
+            // alert('Processamento concluído com sucesso!'); // Removed alert for smoother UI
+            // setProcessingState('LIST'); // Stay on the current view to allow printing
+            alert('Salário processado com sucesso! Utilize os botões acima para imprimir.');
+            // Removed automatic reset to LIST to allow the user to print from the result view
         } catch (err) {
             alert('Erro ao processar: ' + (err as Error).message);
         } finally {
@@ -229,19 +246,16 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                 const initialAtt: Record<number, DailyAttendance> = {};
                 for (let d = 1; d <= daysInMonth; d++) {
                     initialAtt[d] = {
-                        day: d,
-                        present: true,
-                        worked: true,
-                        hours: 8,
-                        extraHours: 0,
-                        absences: 0,
-                        lateMinutes: 0
+                        status: 'SERVICO',
+                        overtimeHours: 0,
+                        lostHours: 0,
+                        location: '1'
                     };
                 }
 
                 const slip = calculateSlip(emp, initialAtt);
                 slips.push(slip);
-                totalPayment += slip.netSalary;
+                totalPayment += (slip.netTotal || 0);
 
                 const updatedEmp = { ...emp, isMagic: true };
                 onSaveEmployee(updatedEmp);
@@ -348,10 +362,10 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                                 <div key={day} className="p-3 border border-slate-200 rounded-lg bg-slate-50">
                                     <div className="text-xs font-bold text-slate-600 mb-2">{dayName} {day}</div>
                                     <label className="flex items-center gap-2 text-xs mb-1">
-                                        <input type="checkbox" checked={att.worked} onChange={e => setCurrentAttendance({ ...currentAttendance, [day]: { ...att, worked: e.target.checked } })} className="rounded" />
+                                        <input type="checkbox" checked={att.status === 'SERVICO'} onChange={e => setCurrentAttendance({ ...currentAttendance, [day]: { ...att, status: e.target.checked ? 'SERVICO' : 'FOLGA' } })} className="rounded" />
                                         Trabalhou
                                     </label>
-                                    <input type="number" className="w-full p-1 border rounded text-xs" placeholder="Horas" value={att.hours} onChange={e => setCurrentAttendance({ ...currentAttendance, [day]: { ...att, hours: Number(e.target.value) } })} />
+                                    <input type="number" className="w-full p-1 border rounded text-xs" placeholder="H.Extra" value={att.overtimeHours} onChange={e => setCurrentAttendance({ ...currentAttendance, [day]: { ...att, overtimeHours: Number(e.target.value) } })} />
                                 </div>
                             );
                         })}
@@ -452,11 +466,25 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                             <span className="hidden xl:inline">Recibos de Salário</span>
                         </button>
 
-                        <button onClick={() => setActiveTab('COLABORADORES')} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center gap-2">
-                            <Plus size={16} /> <span className="hidden sm:inline">CRIAR PROFISSÃO</span>
+                        <button
+                            onClick={() => setShowProcessingModal(true)}
+                            className="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition flex items-center gap-2"
+                        >
+                            <Calculator size={16} className="text-green-600" />
+                            <span className="hidden xl:inline">Processamento</span>
                         </button>
+
+                        <button
+                            onClick={() => window.print()}
+                            className="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition flex items-center gap-2"
+                        >
+                            <Printer size={16} className="text-slate-600" />
+                            <span className="hidden xl:inline">Imprimir Lista</span>
+                        </button>
+
                     </div>
                 </div>
+
 
                 {/* Table with clean design like the image */}
                 <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
@@ -477,8 +505,9 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                         <tbody className="divide-y divide-slate-100">
                             {employees.map((emp, index) => {
                                 const profession = professions.find(p => p.id === emp.professionId);
+                                const slip = payroll.find(p => p.employeeId === emp.id && p.month === processingMonth && p.year === processingYear);
                                 return (
-                                    <tr key={emp.id} className="hover:bg-blue-50 transition-colors">
+                                    <tr key={emp.id} className={slip ? "bg-green-50/30 hover:bg-green-50 transition-colors" : "hover:bg-blue-50 transition-colors"}>
                                         <td className="p-3 text-sm text-slate-700">{formatDate(emp.admissionDate)}</td>
                                         <td className="p-3 text-sm font-semibold text-slate-800">{emp.name.split(' ')[0]}</td>
                                         <td className="p-3 text-sm font-bold text-slate-900">{profession?.internalName || '---'}</td>
@@ -491,16 +520,24 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                                             {formatCurrency(profession?.costReference || 0).replace('Kz', '')}
                                         </td>
                                         <td className="p-3 text-sm text-right font-mono font-black text-slate-800">
-                                            {formatCurrency((profession?.baseSalary || 0) + (profession?.costReference || 0)).replace('Kz', '')}
+                                            {slip ? (
+                                                <span className="text-green-600">{formatCurrency(slip.netTotal).replace('Kz', '')}</span>
+                                            ) : (
+                                                formatCurrency((profession?.baseSalary || 0) + (profession?.costReference || 0)).replace('Kz', '')
+                                            )}
                                         </td>
                                         <td className="p-3 text-center">
                                             <div className="flex items-center justify-center gap-2">
                                                 <button
-                                                    onClick={() => handleOpenDetailedAttendance(emp)}
+                                                    onClick={() => {
+                                                        setSelectedEmployeeForModal(emp.id);
+                                                        setShowProcessingModal(true);
+                                                        if (onToggleSidebarTheme) onToggleSidebarTheme(true);
+                                                    }}
                                                     className="p-1.5 hover:bg-blue-100 rounded transition"
-                                                    title="Processar"
+                                                    title={slip ? "Ver Processamento" : "Executar Processamento"}
                                                 >
-                                                    <Edit size={16} className="text-blue-600" />
+                                                    {slip ? <CheckCircle size={16} className="text-green-600" /> : <Calculator size={16} className="text-blue-600" />}
                                                 </button>
                                                 <button
                                                     className="p-1.5 hover:bg-red-100 rounded transition"
@@ -516,21 +553,37 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </div >
         );
     };
 
     return (
         <div className="p-6 bg-slate-50 min-h-screen">
             {/* Simple header */}
-            <div className="mb-6">
-                <button
-                    onClick={() => window.history.back()}
-                    className="flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-4"
-                >
-                    <ArrowLeft size={20} />
-                </button>
-                <h1 className="text-2xl font-bold text-slate-800">CLASSIFICADOR SALARIAL</h1>
+            <div className="mb-6 flex flex-col md:flex-row justify-between md:items-center gap-4">
+                <div>
+                    <button
+                        onClick={() => window.history.back()}
+                        className="flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-2"
+                    >
+                        <ArrowLeft size={20} />
+                    </button>
+                    <h1 className="text-2xl font-bold text-slate-800">CLASSIFICADOR SALARIAL</h1>
+                </div>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => setActiveTab('PROFISSÕES')}
+                        className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg flex items-center gap-2 text-xs font-bold hover:bg-slate-50 hover:text-blue-600 transition shadow-sm"
+                    >
+                        <Settings size={16} /> <span className="hidden sm:inline">Definição de Profissões</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('COLABORADORES')}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-xs font-bold hover:bg-blue-700 transition shadow-md"
+                    >
+                        <Plus size={16} /> <span className="hidden sm:inline">Novo Colaborador</span>
+                    </button>
+                </div>
             </div>
 
             {/* Tabs */}
@@ -570,7 +623,7 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                             : 'bg-white text-slate-600 hover:bg-slate-100'
                             }`}
                     >
-                        Processar Salário
+                        Processamento
                     </button>
                 </div>
             </div>
@@ -592,6 +645,10 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                         workLocations={workLocations}
                         professions={professions}
                         onPrintSlip={onPrintSlip}
+                        onExecuteProcess={(empId) => {
+                            setSelectedEmployeeForModal(empId);
+                            setActiveTab('PROCESSAMENTO');
+                        }}
                     />
                 )}
                 {activeTab === 'PROCESSAMENTO' && (
@@ -601,12 +658,19 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                         currentMonth={processingMonth}
                         currentYear={processingYear}
                         cashRegisters={cashRegisters}
+                        onOpenProcessingModal={(empId) => {
+                            setSelectedEmployeeForModal(empId || null);
+                            setShowProcessingModal(true);
+                            if (onToggleSidebarTheme) onToggleSidebarTheme(true);
+                        }}
+                        onToggleSidebarTheme={onToggleSidebarTheme}
                     />
                 )}
                 {showTaxMaps && (
                     <TaxMaps
                         company={company}
                         payroll={payroll}
+                        employees={employees}
                         onClose={() => setShowTaxMaps(false)}
                     />
                 )}
@@ -616,6 +680,11 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                         payroll={payroll}
                         employees={employees}
                         onClose={() => setShowReceipts(false)}
+                        onGoToProcessing={() => {
+                            setShowReceipts(false);
+                            setShowProcessingModal(true);
+                            if (onToggleSidebarTheme) onToggleSidebarTheme(true);
+                        }}
                     />
                 )}
 
@@ -625,6 +694,25 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                         payroll={payroll}
                         employees={employees}
                         onClose={() => setShowTransferOrder(false)}
+                    />
+                )}
+                {showProcessingModal && (
+                    <SalaryProcessingModal
+                        company={company}
+                        employees={employees}
+                        processingMonth={processingMonth}
+                        processingYear={processingYear}
+                        initialEmployeeId={selectedEmployeeForModal}
+                        initialData={processingInitialData}
+                        onProcess={(slip) => {
+                            onProcessPayroll([slip]);
+                        }}
+                        onClose={() => {
+                            setShowProcessingModal(false);
+                            setSelectedEmployeeForModal(null);
+                            setProcessingInitialData(null);
+                            if (onToggleSidebarTheme) onToggleSidebarTheme(false);
+                        }}
                     />
                 )}
             </div>

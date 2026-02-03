@@ -21,12 +21,14 @@ import ScreenshotButton from './components/ScreenshotButton';
 import Workspace from './components/Workspace';
 import SaftExport from './components/SaftExport';
 import ManagementReports from './components/ManagementReports';
+import Agribusiness from './components/Agribusiness';
+import ChurchManagement from './components/ChurchManagement';
 
 import {
     Invoice, InvoiceStatus, ViewState, Client, Product, InvoiceType,
     Warehouse, PriceTable, StockMovement, Purchase, Company, User,
     Employee, SalarySlip, HrTransaction, WorkLocation, CashRegister, DocumentSeries,
-    Supplier, PaymentMethod, CashMovement, HrVacation
+    Supplier, PaymentMethod, CashMovement, HrVacation, Profession, Contract, AttendanceRecord
 } from './types';
 import {
     Menu
@@ -132,6 +134,8 @@ const App: React.FC = () => {
         permissions: ['DASHBOARD', 'INVOICES', 'CLIENTS', 'SUPPLIERS', 'PURCHASES', 'STOCK', 'FINANCE_GROUP', 'SETTINGS', 'HR']
     });
 
+    const [isSidebarWhite, setIsSidebarWhite] = useState(true);
+
     const handleLogin = (userData: any) => {
         setIsLoggedIn(true);
         if (userData) {
@@ -171,6 +175,9 @@ const App: React.FC = () => {
     const [hrVacations, setHrVacations] = useState<HrVacation[]>([]);
     const [payrollHistory, setPayrollHistory] = useState<SalarySlip[]>([]);
     const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
+    const [professions, setProfessions] = useState<Profession[]>([]);
+    const [contracts, setContracts] = useState<Contract[]>([]);
+    const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
 
     // Invoice Form State
     const [invoiceInitialType, setInvoiceInitialType] = useState<InvoiceType>(InvoiceType.FT);
@@ -556,6 +563,7 @@ const App: React.FC = () => {
             case 'ACCOUNTING_SAFT':
                 return <SaftExport invoices={invoices} purchases={purchases} />;
             case 'HR':
+            case 'HR_SALARY_PROC':
                 return <HumanResources
                     employees={employees}
                     onSaveEmployee={(e) => setEmployees(prev => prev.map(emp => emp.id === e.id ? e : emp).concat(prev.find(emp => emp.id === e.id) ? [] : [e]))}
@@ -565,7 +573,24 @@ const App: React.FC = () => {
                     onSaveVacation={(v) => setHrVacations([...hrVacations, v])}
                     payroll={payrollHistory}
                     onProcessPayroll={(p) => setPayrollHistory([...payrollHistory, ...p])}
+                    professions={professions}
+                    onSaveProfession={(p) => setProfessions([...professions.filter(pr => pr.id !== p.id), p])}
+                    onDeleteProfession={(id) => setProfessions(professions.filter(p => p.id !== id))}
+                    contracts={contracts}
+                    onSaveContract={(c) => setContracts([...contracts, c])}
+                    attendance={attendance}
+                    onSaveAttendance={(a) => setAttendance([...attendance, a])}
+                    company={MOCK_COMPANY}
+                    workLocations={workLocations}
+                    cashRegisters={cashRegisters}
+                    onUpdateCashRegister={(cr) => setCashRegisters(prev => prev.map(c => c.id === cr.id ? cr : c))}
+                    initialTab={currentView === 'HR_SALARY_PROC' ? 'SALARY_MODAL' : undefined}
+                    onToggleSidebarTheme={(white) => setIsSidebarWhite(white)}
                 />;
+            case 'AGRIBUSINESS':
+                return <Agribusiness />;
+            case 'CHURCH_MANAGEMENT':
+                return <ChurchManagement />;
             default:
                 return <div className="p-8 text-center text-slate-400">Módulo em desenvolvimento...</div>;
         }
@@ -584,6 +609,7 @@ const App: React.FC = () => {
                 setIsOpen={setIsSidebarOpen}
                 currentUser={currentUser}
                 onLogout={handleLogout}
+                isWhite={isSidebarWhite}
             />
 
             <div className="flex-1 flex flex-col overflow-hidden">

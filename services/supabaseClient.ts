@@ -1,12 +1,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-/**
- * Conexão segura com o banco de dados via Supabase.
- * Credenciais de produção atualizadas para a base de dados: imatecv12026.
- * 
- * As credenciais são carregadas das variáveis de ambiente para segurança.
- */
+// Conexão segura com o banco de dados via Supabase.
+// Credenciais de produção atualizadas para a base de dados: imatecv12026.
 
 // Carregar variáveis de ambiente
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://alqttoqjftqckojusayf.supabase.co";
@@ -15,7 +11,6 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJ
 // Validar variáveis de ambiente
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error('❌ Erro: Variáveis de ambiente do Supabase não configuradas!');
-  console.error('Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no arquivo .env.local');
 }
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -30,3 +25,106 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 console.log('🔌 Supabase Client inicializado');
 console.log('📊 Banco de dados: imatecv12026');
 console.log('🌍 URL:', SUPABASE_URL);
+
+// ================= COMPRAS =================
+export async function listarCompras() {
+  const { data, error } = await supabase
+    .from('compras')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function criarCompra(compra: any) {
+  const { data, error } = await supabase
+    .from('compras')
+    .insert([compra])
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// ================= SECRETARIA =================
+export async function listarSecretaria() {
+  const { data, error } = await supabase
+    .from('secretaria')
+    .select('*');
+
+  if (error) throw error;
+  return data;
+}
+
+export async function criarDocumentoSecretaria(doc: any) {
+  const { data, error } = await supabase
+    .from('secretaria')
+    .insert([doc])
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// ================= PAGAMENTO DE IMPOSTO =================
+export async function listarImpostos() {
+  const { data, error } = await supabase
+    .from('pagamento_imposto')
+    .select('*');
+
+  if (error) throw error;
+  return data;
+}
+
+export async function pagarImposto(imposto: any) {
+  const { data, error } = await supabase
+    .from('pagamento_imposto')
+    .insert([imposto])
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// ================= LOCAL DE TRABALHO =================
+// ================= LOCAL DE TRABALHO =================
+export async function listarLocaisTrabalho() {
+  const { data, error } = await supabase
+    .from('local_trabalho')
+    .select('*');
+
+  if (error) throw error;
+  return data;
+}
+
+export async function criarLocalTrabalho(local: any) {
+  const { data, error } = await supabase
+    .from('local_trabalho')
+    .insert([local])
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// ================= ARQUIVOS =================
+export async function uploadArquivo(file: File) {
+  const filePath = `arquivos/${Date.now()}-${file.name}`;
+
+  const { data, error } = await supabase.storage
+    .from('arquivos')
+    .upload(filePath, file);
+
+  if (error) throw error;
+  return data;
+}
+
+export async function listarArquivos() {
+  const { data, error } = await supabase.storage
+    .from('arquivos')
+    .list();
+
+  if (error) throw error;
+  return data;
+}

@@ -204,7 +204,8 @@ const StockManager: React.FC<StockManagerProps> = ({
                 descricao: newWarehouse.description,
                 responsavel: newWarehouse.managerName,
                 contacto: newWarehouse.contact,
-                observacoes: newWarehouse.observations
+                observacoes: newWarehouse.observations,
+                empresa_id: '00000000-0000-0000-0000-000000000001'
             });
             if (error) throw error;
             setShowWarehouseModal(false);

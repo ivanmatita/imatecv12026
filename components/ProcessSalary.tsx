@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Employee, SalarySlip, CashRegister } from '../types';
-import { formatCurrency, formatDate, calculateINSS, calculateIRT, numberToExtenso } from '../utils';
+import { formatCurrency, formatDate, calculateINSS, calculateIRT, numberToExtenso, roundToNearestBank } from '../utils';
 import { Save, Printer, Trash2, CheckSquare, MoreVertical, X, Calendar, ChevronRight, Calculator, CheckCircle2 } from 'lucide-react';
 
 interface ProcessSalaryProps {
@@ -9,10 +9,12 @@ interface ProcessSalaryProps {
     onProcessPayroll: (slips: SalarySlip[]) => void;
     currentMonth: number;
     currentYear: number;
-    cashRegisters: CashRegister[]; // Added prop
+    cashRegisters: CashRegister[];
+    onOpenProcessingModal?: (employeeId?: string) => void;
+    onToggleSidebarTheme?: (isWhite: boolean) => void;
 }
 
-const ProcessSalary: React.FC<ProcessSalaryProps> = ({ employees, onProcessPayroll, currentMonth, currentYear, cashRegisters }) => {
+const ProcessSalary: React.FC<ProcessSalaryProps> = ({ employees, onProcessPayroll, currentMonth, currentYear, cashRegisters, onOpenProcessingModal, onToggleSidebarTheme }) => {
     const [processedEmployees, setProcessedEmployees] = useState<Record<string, number>>({});
     const [actionMenuOpenId, setActionMenuOpenId] = useState<string | null>(null);
     const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
@@ -67,18 +69,113 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({ employees, onProcessPayro
         }
     };
 
+    const handleDirectProcess = (empId: string) => {
+        const currentEmp = employees.find(e => e.id === empId);
+        if (currentEmp) {
+            const base = currentEmp.baseSalary;
+            const manual = manualValues[currentEmp.id] || {};
+
+            // Default days for direct process (can be adjusted)
+            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+            const absentDays = 0; // Default to 0 for direct process if not coming from attendance grid
+
+            const absenceDeduction = (base / 30) * absentDays;
+            const sFood = currentEmp.subsidyFood || 0;
+            const sTrans = currentEmp.subsidyTransport || 0;
+            const sFam = manual.family || currentEmp.subsidyFamily || 0;
+            const sHouse = manual.housing || currentEmp.subsidyHousing || 0;
+            const sChrist = manual.christmas || currentEmp.subsidyChristmas || 0;
+            const sVac = manual.vacation || currentEmp.subsidyVacation || 0;
+            const allowances = manual.otherSubsidies || currentEmp.allowances || 0;
+
+            const gross = base + sFood + sTrans + sFam + sHouse + sChrist + sVac + allowances - absenceDeduction;
+            const inss = calculateINSS(base, sFood, sTrans);
+            const irt = calculateIRT(base, inss, sFood, sTrans);
+            const net = gross - inss - irt - (manual.penalties || 0);
+
+            const slip = {
+                employeeId: currentEmp.id,
+                employeeName: currentEmp.name,
+                employeeRole: currentEmp.role,
+                professionCode: currentEmp.professionName,
+                baseSalary: base,
+                allowances: allowances,
+                bonuses: 0,
+                subsidies: sFood + sTrans + sFam + sHouse + sChrist + sVac,
+                subsidyTransport: sTrans,
+                subsidyFood: sFood,
+                subsidyFamily: sFam,
+                subsidyHousing: sHouse,
+                absences: absenceDeduction,
+                advances: currentEmp.advances || 0,
+                penalties: manual.penalties || 0,
+                grossTotal: gross,
+                inss: inss,
+                irt: irt,
+                netTotal: net,
+                month: currentMonth,
+                year: currentYear,
+                sChrist, sVac, sFam, sHouse,
+                daysInMonth
+            };
+
+            setSlipData({ ...slip, emp: currentEmp });
+            setView('SLIP');
+            if (onToggleSidebarTheme) onToggleSidebarTheme(true);
+        }
+    };
+
     const handleProcessAction = () => {
         if (!selectedAction) return;
 
-        if (selectedAction === 'PROCESS_ATTENDANCE' || selectedAction === 'PROCESS_SALARY') {
-            if (selectedEmployees.size === 1) {
-                setAttendanceEmployeeId(Array.from(selectedEmployees)[0]);
-                setView('ATTENDANCE');
-            } else if (selectedEmployees.size > 1) {
-                alert("Por favor, selecione apenas um funcionário por vez.");
+        if (selectedAction === 'PROCESS_SALARY') {
+            const empId = Array.from(selectedEmployees)[0] || employees[0]?.id;
+            if (empId) {
+                if (onOpenProcessingModal) {
+                    onOpenProcessingModal(empId);
+                } else {
+                    handleDirectProcess(empId);
+                }
             } else {
-                alert("Selecione um funcionário na lista.");
+                alert("Nenhum funcionário disponível para processar.");
             }
+        } else if (selectedAction === 'PROCESS_ATTENDANCE') {
+            const empId = Array.from(selectedEmployees)[0] || employees[0]?.id;
+            if (empId) {
+                setAttendanceEmployeeId(empId);
+                setView('ATTENDANCE');
+                if (onToggleSidebarTheme) onToggleSidebarTheme(true);
+            } else {
+                alert("Nenhum funcionário disponível para processar efetividade.");
+            }
+        } else if (selectedAction === 'PRINT_RECEIPT') {
+            const empId = Array.from(selectedEmployees)[0] || employees[0]?.id;
+            if (empId) {
+                const emp = employees.find(e => e.id === empId);
+                if (emp && onPrintSlip) {
+                    onPrintSlip(emp);
+                } else if (emp) {
+                    handleDirectProcess(empId);
+                }
+            } else {
+                alert("Nenhum funcionário disponível para imprimir.");
+            }
+        } else if (selectedAction === 'DELETE_SALARY') {
+            if (selectedEmployees.size > 0) {
+                if (confirm(`Deseja apagar o processamento de ${selectedEmployees.size} funcionário(s)?`)) {
+                    const idsToRemove = Array.from(selectedEmployees);
+                    setProcessedEmployees(prev => {
+                        const next = { ...prev };
+                        idsToRemove.forEach(id => delete next[id]);
+                        return next;
+                    });
+                    setSelectedEmployees(new Set());
+                }
+            } else {
+                alert("Selecione funcionários para apagar o salário.");
+            }
+        } else if (selectedAction === 'DELETE_ATTENDANCE') {
+            alert("Funcionalidade de apagar efetividade em massa em desenvolvimento.");
         } else {
             console.log("Action:", selectedAction);
         }
@@ -89,9 +186,23 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({ employees, onProcessPayro
         if (action === 'PROCESS_ATTENDANCE') {
             setAttendanceEmployeeId(empId);
             setView('ATTENDANCE');
+            if (onToggleSidebarTheme) onToggleSidebarTheme(true);
+            closeActionMenu();
+        } else if (action === 'PROCESS_SALARY') {
+            if (onOpenProcessingModal) {
+                onOpenProcessingModal(empId);
+            } else {
+                handleDirectProcess(empId);
+            }
+            closeActionMenu();
+        } else if (action === 'PRINT_RECEIPT') {
+            if (onOpenProcessingModal) {
+                onOpenProcessingModal(empId);
+            } else {
+                handleDirectProcess(empId);
+            }
             closeActionMenu();
         }
-        // Handle other actions...
     };
 
     const months = [
@@ -393,7 +504,7 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({ employees, onProcessPayro
                                 // Count days for different statuses
                                 let workedDays = 0;
                                 let absentDays = 0;
-                                Object.values(grid).forEach(d => {
+                                Object.values(grid).forEach((d: any) => {
                                     if (d.status === 'SERVICO') workedDays++;
                                     if (d.status === 'INJUST') absentDays++;
                                 });
@@ -462,301 +573,262 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({ employees, onProcessPayro
         if (!slipData || !slipData.emp) return null;
         const {
             emp,
-            baseSalary,
-            subsidyFood,
-            subsidyTransport,
-            subsidyFamily,
-            subsidyHousing,
-            sChrist,
-            sVac,
-            allowances, // Complemento Salarial
-            absences,
+            baseSalary: safeBase,
+            subsidyFood: safeSubFoodValues,
+            subsidyTransport: safeSubTransValues,
+            subsidyFamily: safeSubFamValues,
+            subsidyHousing: safeSubHouseValues,
+            sChrist: safeSubChristValues,
+            sVac: safeSubVacValues,
+            allowances: safeAllowances,
+            absences: safeAbsences,
             inss,
             irt,
-            grossTotal,
             netTotal,
             month,
-            year
+            year,
+            daysInMonth
         } = slipData;
 
-        // Ensure we have numbers
-        const safeBase = baseSalary || 0;
-        const safeAllowances = allowances || 0;
-        const safeAbsences = absences || 0;
-        const safeSubVac = sVac || 0;
-        const safeSubChrist = sChrist || 0;
-        const safeSubTrans = subsidyTransport || 0;
-        const safeSubFood = slipData.subsidyFood || 0; // Use slipData.subsidyFood as it's passed directly
-        const safeSubFam = subsidyFamily || 0;
-        const safeSubHouse = subsidyHousing || 0;
+        // Ensure we have numbers - handle potentially different prop names
+        const safeSubVac = safeSubVacValues || 0;
+        const safeSubChrist = safeSubChristValues || 0;
+        const safeSubTrans = safeSubTransValues || 0;
+        const safeSubFood = safeSubFoodValues || 0;
+        const safeSubFam = safeSubFamValues || 0;
+        const safeSubHouse = safeSubHouseValues || 0;
 
-        // Derived calculations matching the image logic
-        // 05 Total Iliquido (01+02-03+04)
-        // Note: absences in slipData is the money amount deducted? Or days?
-        // In ProcessSalary logic: const absenceDeduction = (base / 30) * absentDays; slip.absences = absenceDeduction.
-        // So slipData.absences is a VALUE. 
-        // We need days for the display "Abatimento de Faltas (Xd)".
-        // We can reverse calc or pass it. 
-        // Looking at ProcessSalary logic: 
-        // let absentDays = 0; ... if (d.status === 'INJUST') absentDays++;
-        // We didn't pass 'absentDays' to slip object explicitly in setSlipData except implied in calculation.
-        // Let's assume we can get it or default to calculation (absences / (base/30)).
         const calculatedAbsentDays = safeBase > 0 ? Math.round(safeAbsences / (safeBase / 30)) : 0;
-        const totalIliquido = safeBase + safeAllowances - safeAbsences; // Assuming 04 Overtime is 0 for now as it wasn't in slipData explicity
-
-        // 13 Total Vencimento antes de Impostos
-        // [05]+[06]+[07]+[08]+[09]+[10]+[11]-[12]
-        // 05 (Iliquido) + Subs
+        const totalIliquido = safeBase + safeAllowances - safeAbsences;
         const totalSubs = safeSubVac + safeSubChrist + safeSubFam + safeSubTrans + safeSubFood + safeSubHouse;
         const totalBeforeTax = totalIliquido + totalSubs;
 
         return (
-            <div className="fixed inset-0 z-[100] bg-slate-800/95 backdrop-blur-sm flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
-                <div className="flex-1 overflow-auto p-4 md:p-8 flex flex-col items-center bg-slate-100">
+            <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-md flex flex-col animate-in fade-in duration-300 overflow-hidden">
+                <div className="flex-1 overflow-auto p-4 md:p-8 flex flex-col items-center bg-slate-100/50">
 
-                    {/* RECEIPT DESIGN MATCHING IMAGE */}
-                    <div id="receipt-print-area" className="bg-white shadow-lg p-0 w-[210mm] min-h-[148mm] max-w-full print:shadow-none print:w-full font-Arial">
-                        <div id="receipt-content" className="p-8 md:p-12 relative">
+                    {/* RECEIPT DESIGN - IMPROVED TABLE LAYOUT */}
+                    <div id="receipt-print-area" className="bg-white shadow-xl w-full max-w-[95vw] md:max-w-4xl min-h-[148mm] mx-auto print:shadow-none print:w-full print:max-w-none font-sans text-slate-900 border border-slate-300 p-8 md:p-12 relative flex flex-col">
 
-                            {/* Header Gradient Bar */}
-                            <div className="w-full h-8 bg-gradient-to-b from-slate-300 to-white border-b border-slate-400 mb-6 flex items-center justify-center">
-                                <h1 className="font-bold text-center text-black uppercase tracking-wider">RECIBO SALARIO</h1>
-                            </div>
-
-                            {/* Employee & Date Header */}
-                            <div className="flex justify-between items-end mb-2 border-b-2 border-black pb-1">
-                                <div className="flex items-end gap-2">
-                                    <span className="text-xl font-bold">{emp.employeeNumber || '0001'}</span>
-                                    <span className="text-xl font-bold uppercase">{emp.name}</span>
+                        {/* Receipt Header */}
+                        <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-6">
+                            <div className="flex gap-4">
+                                <div className="h-16 w-16 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200">
+                                    <CheckCircle2 className="text-slate-300" size={32} />
                                 </div>
-                                <div className="text-right">
-                                    <span className="font-bold">{months[month - 1]} de {year}</span>
+                                <div>
+                                    <h1 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tight leading-none mb-1">IMATEC SOFTWARE</h1>
+                                    <p className="text-xs text-slate-500 font-medium max-w-[250px]">Gestão e Processamento</p>
+                                    <p className="text-xs text-slate-500 font-medium mt-1">NIF: 500000000</p>
                                 </div>
                             </div>
-
-                            {/* Profession Centered */}
-                            <div className="flex justify-center mb-4">
-                                <span className="font-bold">{emp.professionName || emp.role || 'Geral'}</span>
+                            <div className="text-right">
+                                <h2 className="text-lg font-black text-slate-400 uppercase tracking-[0.2em]">RECIBO DE VENCIMENTO</h2>
+                                <p className="text-sm font-bold text-slate-900 mt-2 uppercase">{months[month - 1]} / {year}</p>
+                                <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Período de Processamento</p>
                             </div>
+                        </div>
 
-                            {/* Main Content Grid */}
-                            <div className="space-y-1 text-sm font-medium text-black">
-
-                                {/* 01 Vencimento Base */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600">01</span>
-                                    <span className="flex-1">Vencimento Base para a Categoria Profissional</span>
-                                    <span className="w-16 text-center">30</span>
-                                    <div className="w-48 bg-slate-100 rounded-full border border-slate-300 px-3 text-right shadow-inner flex items-center justify-end h-6">
-                                        {formatCurrency(safeBase).replace('Kz', '').trim()}
-                                    </div>
+                        {/* Employee Info */}
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Funcionário</p>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-mono bg-white px-1.5 py-0.5 border rounded text-xs text-slate-500">{emp.id.replace(/\D/g, '').substring(0, 3)}</span>
+                                    <p className="text-base font-black text-slate-800 uppercase">{emp.name}</p>
                                 </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Categoria</p>
+                                    <p className="text-xs font-bold text-slate-700 uppercase">{emp.professionName || 'Geral'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dias Úteis</p>
+                                    <p className="text-xs font-bold text-slate-700 uppercase">{daysInMonth || 30} dias</p>
+                                </div>
+                            </div>
+                        </div>
 
-                                {/* 02 Complemento */}
-                                {safeAllowances > 0 && (
-                                    <div className="flex items-center">
-                                        <span className="w-8 text-slate-600">02</span>
-                                        <span className="flex-1">Complemento Salarial</span>
-                                        <span className="w-16 text-center"></span>
-                                        <div className="w-48 bg-slate-100 rounded-full border border-slate-300 px-3 text-right shadow-inner flex items-center justify-end h-6">
-                                            {formatCurrency(safeAllowances).replace('Kz', '').trim()}
+                        {/* Table Content */}
+                        <div className="flex-1">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b-2 border-slate-200 text-left">
+                                        <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider w-16">Cód</th>
+                                        <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">Descrição</th>
+                                        <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right w-24">Abonos</th>
+                                        <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right w-24">Descontos</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 divide-dashed">
+                                    {/* Earnings */}
+                                    <tr className="group hover:bg-slate-50">
+                                        <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">01</td>
+                                        <td className="py-2 pl-2 font-medium text-slate-700">Vencimento Base</td>
+                                        <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(safeBase).replace('Kz', '')}</td>
+                                        <td className="py-2 text-right text-slate-300">---</td>
+                                    </tr>
+
+                                    {safeAllowances > 0 && (
+                                        <tr className="group hover:bg-slate-50">
+                                            <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">02</td>
+                                            <td className="py-2 pl-2 font-medium text-slate-700">Complementos Salariais</td>
+                                            <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(safeAllowances).replace('Kz', '')}</td>
+                                            <td className="py-2 text-right text-slate-300">---</td>
+                                        </tr>
+                                    )}
+
+                                    {safeSubFood > 0 && <tr className="group hover:bg-slate-50">
+                                        <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">S1</td>
+                                        <td className="py-2 pl-2 font-medium text-slate-700">Subsídio de Alimentação</td>
+                                        <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(safeSubFood).replace('Kz', '')}</td>
+                                        <td className="py-2 text-right text-slate-300">---</td>
+                                    </tr>}
+
+                                    {safeSubTrans > 0 && <tr className="group hover:bg-slate-50">
+                                        <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">S2</td>
+                                        <td className="py-2 pl-2 font-medium text-slate-700">Subsídio de Transporte</td>
+                                        <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(safeSubTrans).replace('Kz', '')}</td>
+                                        <td className="py-2 text-right text-slate-300">---</td>
+                                    </tr>}
+
+                                    {safeSubVac > 0 && <tr className="group hover:bg-slate-50">
+                                        <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">S3</td>
+                                        <td className="py-2 pl-2 font-medium text-slate-700">Subsídio de Férias</td>
+                                        <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(safeSubVac).replace('Kz', '')}</td>
+                                        <td className="py-2 text-right text-slate-300">---</td>
+                                    </tr>}
+
+                                    {/* Deductions */}
+                                    {safeAbsences > 0 && (
+                                        <tr className="group hover:bg-slate-50">
+                                            <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">D1</td>
+                                            <td className="py-2 pl-2 font-medium text-slate-700">Faltas Injustificadas ({calculatedAbsentDays} dias)</td>
+                                            <td className="py-2 text-right text-slate-300">---</td>
+                                            <td className="py-2 text-right font-bold text-red-600">
+                                                -{formatCurrency(safeAbsences).replace('Kz', '')}
+                                            </td>
+                                        </tr>
+                                    )}
+
+                                    <tr className="group hover:bg-slate-50">
+                                        <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">D2</td>
+                                        <td className="py-2 pl-2 font-medium text-slate-700">Segurança Social (INSS 3%)</td>
+                                        <td className="py-2 text-right text-slate-300">---</td>
+                                        <td className="py-2 text-right font-bold text-red-600">-{formatCurrency(inss).replace('Kz', '')}</td>
+                                    </tr>
+
+                                    <tr className="group hover:bg-slate-50">
+                                        <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">D3</td>
+                                        <td className="py-2 pl-2 font-medium text-slate-700">Imposto sobre Rendimento (IRT)</td>
+                                        <td className="py-2 text-right text-slate-300">---</td>
+                                        <td className="py-2 text-right font-bold text-red-600">-{formatCurrency(irt).replace('Kz', '')}</td>
+                                    </tr>
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t-2 border-slate-900">
+                                        <td colSpan={2} className="pt-4 text-right pr-4 text-xs font-black uppercase text-slate-500 tracking-wider">Totais</td>
+                                        <td className="pt-4 text-right font-black text-slate-800 bg-slate-50 rounded-l-lg py-2">
+                                            {formatCurrency(totalBeforeTax).replace('Kz', '')}
+                                        </td>
+                                        <td className="pt-4 text-right font-black text-red-600 bg-slate-50 rounded-r-lg py-2">
+                                            -{formatCurrency(irt + inss + safeAbsences).replace('Kz', '')}
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        {/* Net Pay Highlight */}
+                        <div className="mt-8 bg-slate-900 text-white p-6 rounded-xl flex justify-between items-center shadow-lg">
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Líquido a Receber</p>
+                                <p className="text-xs text-slate-500 font-medium">Transferência ou Numerário</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-3xl font-black tracking-tight">{formatCurrency(netTotal)}</p>
+                            </div>
+                        </div>
+
+                        {/* Footer Signatures */}
+                        <div className="mt-12 pt-8 border-t border-slate-200 grid grid-cols-2 gap-12">
+                            <div className="text-center">
+                                <div className="h-0.5 w-2/3 bg-slate-300 mx-auto mb-2"></div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">A Entidade Patronal</p>
+                            </div>
+                            <div className="text-center">
+                                <div className="h-0.5 w-2/3 bg-slate-300 mx-auto mb-2"></div>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">O Colaborador</p>
+                            </div>
+                        </div>
+
+                        {/* Process Actions */}
+                        <div className="border-t border-slate-200 mt-6 pt-4 flex flex-col md:flex-row justify-between items-center px-2 print:hidden">
+                            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest mb-4 md:mb-0">Processado por Soft-Imatec</span>
+
+                            <div className="flex flex-col md:flex-row items-center gap-5">
+                                {processedEmployees[emp.id] ? (
+                                    <div className="flex items-center gap-5">
+                                        <div className="flex items-center gap-2 text-green-700 font-black text-base">
+                                            <CheckCircle2 size={24} />
+                                            <span>PROCESSADO</span>
                                         </div>
+                                        <button
+                                            onClick={() => window.print()}
+                                            className="bg-black text-white px-6 py-2 rounded shadow-xl font-black uppercase text-xs hover:scale-105 transition-transform flex items-center gap-2"
+                                        >
+                                            <Printer size={16} /> Imprimir
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setView('LIST');
+                                                if (onToggleSidebarTheme) onToggleSidebarTheme(false);
+                                            }}
+                                            className="bg-white border-2 border-slate-800 text-slate-800 px-4 py-2 rounded shadow-md font-black uppercase text-xs hover:bg-slate-50 transition"
+                                        >
+                                            Sair
+                                        </button>
                                     </div>
-                                )}
-
-                                {/* 03 Faltas */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600">03</span>
-                                    <span className="flex-1">Abatimento de Faltas ({calculatedAbsentDays}d) (Total Horas={calculatedAbsentDays * 8}Hrs)</span>
-                                    <span className="w-16 text-center">{calculatedAbsentDays}</span>
-                                    <div className="w-48 text-right pr-3">
-                                        {safeAbsences > 0 ? `-${formatCurrency(safeAbsences).replace('Kz', '').trim()}` : '0,00'}
-                                    </div>
-                                </div>
-
-                                {/* 04 Horas Extra */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600">04</span>
-                                    <span className="flex-1">Horas Extra</span>
-                                    <span className="w-16 text-center"></span>
-                                    <div className="w-48 text-right pr-3">0,00</div>
-                                </div>
-
-                                {/* Horas Perdidas */}
-                                <div className="flex items-center">
-                                    <span className="w-8"></span>
-                                    <span className="flex-1 pl-0">Horas Perdidas</span>
-                                    <span className="w-16 text-center"></span>
-                                    <div className="w-48 text-right pr-3">- 0,00</div>
-                                </div>
-
-                                {/* 05 Total Iliquido */}
-                                <div className="flex items-center mt-2 border-t border-black pt-1 mb-4">
-                                    <span className="w-8 text-slate-600">05</span>
-                                    <span className="flex-1 text-center font-bold">Total de Vencimento Base Iliquido (01+02-03+04)</span>
-                                    <span className="w-16 text-center"></span>
-                                    <div className="w-48 text-right font-bold pr-3">
-                                        {formatCurrency(totalIliquido).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* Subsidios Header */}
-                                <div className="flex items-center">
-                                    <span className="w-8"></span>
-                                    <span className="font-bold">Subsidios</span>
-                                </div>
-
-                                {/* 06 Subsidio Ferias */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600">06</span>
-                                    <span className="flex-1">Subsidio de Férias</span>
-                                    <span className="w-16 text-center text-xs">Vg</span>
-                                    <div className="w-48 bg-slate-100 rounded-full border border-slate-300 px-3 text-right shadow-inner flex items-center justify-end h-6">
-                                        {formatCurrency(safeSubVac).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* 07 Subsidio Natal */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600">07</span>
-                                    <span className="flex-1">Subsidio de Natal</span>
-                                    <span className="w-16 text-center text-xs">Vg</span>
-                                    <div className="w-48 bg-slate-100 rounded-full border border-slate-300 px-3 text-right shadow-inner flex items-center justify-end h-6">
-                                        {formatCurrency(safeSubChrist).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* Abono Familia */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600"></span>
-                                    <span className="flex-1">Abono de Familia (Isento até 5000 akz)</span>
-                                    <span className="w-16 text-center text-xs">Vg</span>
-                                    <div className="w-48 bg-slate-100 rounded-full border border-slate-300 px-3 text-right shadow-inner flex items-center justify-end h-6">
-                                        {formatCurrency(safeSubFam).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* 08 Transporte */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600">08</span>
-                                    <span className="flex-1">Subsidio Transporte</span>
-                                    <span className="w-16 text-center">0</span>
-                                    <div className="w-48 text-right pr-3">
-                                        {formatCurrency(safeSubTrans).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* 09 Alimentação */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600">09</span>
-                                    <span className="flex-1">Subsidio Alimentação</span>
-                                    <span className="w-16 text-center">0</span>
-                                    <div className="w-48 text-right pr-3">
-                                        {formatCurrency(safeSubFood).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* 10 Alojamento */}
-                                <div className="flex items-center">
-                                    <span className="w-8 text-slate-600">10</span>
-                                    <span className="flex-1">Subsidio Alojamento</span>
-                                    <span className="w-16 text-center text-xs">Vg</span>
-                                    <div className="w-48 bg-slate-100 rounded-full border border-slate-300 px-3 text-right shadow-inner flex items-center justify-end h-6">
-                                        {formatCurrency(safeSubHouse).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* 13 Total Antes Impostos */}
-                                <div className="flex items-center mt-2 border-t border-black pt-1 mb-4">
-                                    <span className="w-8 text-slate-600">13</span>
-                                    <span className="flex-1 text-center font-bold text-xs mt-1">Total de Vencimento antes de Impostos [05]+[06]+[07]+[08]+[09]+[10]+[11]-[12]</span>
-                                    <span className="w-16 text-center"></span>
-                                    <div className="w-48 text-right font-bold pr-3">
-                                        {formatCurrency(totalBeforeTax).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* Impostos */}
-                                <div className="flex items-start">
-                                    <span className="w-8"></span>
-                                    <div className="flex-1">
-                                        <span className="font-bold block">Impostos</span>
-                                        {irt === 0 && inss === 0 ? (
-                                            <span className="font-bold text-red-600 ml-4">ISENTO</span>
-                                        ) : (
-                                            <div className="ml-4 text-xs">
-                                                {irt > 0 && <div className="text-red-600 font-bold">IRT: {formatCurrency(irt)}</div>}
-                                                {inss > 0 && <div className="text-red-600 font-bold">INSS: {formatCurrency(inss)}</div>}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Vencimento Liquido Calc */}
-                                <div className="flex items-center mt-6">
-                                    <span className="flex-1 text-center font-medium">Vencimento Liquido depois de Impostos [13]-[14]-[15]</span>
-                                    <div className="w-48 text-right font-bold pr-3">
-                                        {formatCurrency(netTotal).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* Arredondar Box */}
-                                <div className="flex justify-end items-center mt-1">
-                                    <div className="text-[10px] border border-green-600 text-green-700 font-bold px-1 mr-2 rounded-sm cursor-help" title="Arredondamento automático">Arredondar</div>
-                                    <div className="w-48 bg-slate-100 rounded-full border border-slate-300 px-3 text-right shadow-inner flex items-center justify-end h-6 font-bold">
-                                        {formatCurrency(Math.floor(netTotal)).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* TOTAL A RECEBER */}
-                                <div className="flex justify-end items-center mt-1 border-t-2 border-black pt-1">
-                                    <span className="font-bold mr-4">TOTAL A RECEBER</span>
-                                    <div className="w-48 text-right font-bold pr-3">
-                                        {formatCurrency(netTotal).replace('Kz', '').trim()}
-                                    </div>
-                                </div>
-
-                                {/* Abonos e Adiantamentos (Red) */}
-                                <div className="mt-4 font-bold text-red-600 text-sm">
-                                    Total de Abonos e Adiantamentos 0,00
-                                </div>
-
-                                {/* Valor a pagar Grande */}
-                                <div className="mt-6 flex justify-center items-center gap-4">
-                                    <div className="text-xl font-bold text-red-600">
-                                        Valor a pagar = {formatCurrency(netTotal).replace('Kz', '').trim()}
-                                    </div>
-
-                                    {/* Processar Button - Actual Action */}
+                                ) : (
                                     <button
                                         onClick={async () => {
-                                            // Finalize Process
                                             if (slipData && slipData.netTotal) {
                                                 setProcessedEmployees(prev => ({ ...prev, [emp.id]: slipData.netTotal }));
                                                 if (onProcessPayroll) onProcessPayroll([slipData]);
-                                                alert("Salário Processado e Arquivado com Sucesso!");
-                                                setView('LIST');
                                             }
                                         }}
-                                        className="bg-green-300 bg-opacity-75 border border-green-400 text-green-900 px-8 py-1 rounded shadow-sm font-medium hover:bg-green-400 transition"
+                                        className="bg-[#a3e4be] hover:bg-[#8fd9ad] text-[#0f3d24] px-12 py-3 rounded-[6px] shadow-lg font-black uppercase text-sm tracking-[0.1em] transition-all duration-300 active:scale-95 border-b-4 border-[#76c295]"
                                     >
                                         Processar
                                     </button>
-                                </div>
-
+                                )}
                             </div>
                         </div>
+
                     </div>
+
                 </div>
 
-                {/* Footer Controls for Modal */}
-                <div className="bg-white p-4 flex justify-between items-center shadow-lg z-20 shrink-0">
-                    <div className="text-slate-600 font-bold text-xs uppercase flex items-center gap-2">
-                        <CheckCircle2 size={16} className="text-green-500" /> Pré-visualização de Recibo
+                {/* Navigation Controls */}
+                <div className="bg-white p-5 flex justify-between items-center shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-[110] shrink-0 border-t border-slate-200 print:hidden">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-green-100 p-2 rounded-full">
+                            <CheckCircle2 size={20} className="text-green-600" />
+                        </div>
+                        <span className="text-slate-700 font-black text-xs uppercase tracking-widest px-2">Finalização do Processo de Salário</span>
                     </div>
-                    <button onClick={() => setView('ATTENDANCE')} className="px-6 py-2 rounded-lg border border-slate-300 text-slate-600 font-bold uppercase text-xs hover:bg-slate-50 transition">Voltar</button>
+                    <button
+                        onClick={() => {
+                            setView('LIST');
+                            if (onToggleSidebarTheme) onToggleSidebarTheme(false);
+                        }}
+                        className="px-8 py-2.5 rounded-full border-2 border-slate-300 text-slate-600 font-black uppercase text-xs hover:bg-slate-50 transition-all duration-200 active:scale-95 flex items-center gap-2"
+                    >
+                        <X size={16} /> Cancelar Operação
+                    </button>
                 </div>
-            </div>
+            </div >
         );
     };
 
@@ -925,8 +997,12 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({ employees, onProcessPayro
                                     <td className="p-2 border-r border-gray-200 text-center">
                                         <button
                                             onClick={() => {
-                                                setAttendanceEmployeeId(emp.id);
-                                                setView('ATTENDANCE');
+                                                if (onOpenProcessingModal) {
+                                                    onOpenProcessingModal(emp.id);
+                                                } else {
+                                                    setAttendanceEmployeeId(emp.id);
+                                                    setView('ATTENDANCE');
+                                                }
                                             }}
                                             className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow-sm text-[10px] font-black uppercase transition active:scale-95"
                                         >

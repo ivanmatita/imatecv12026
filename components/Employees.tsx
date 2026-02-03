@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Employee, WorkLocation, Profession } from '../types';
-import { generateId, formatCurrency, calculateINSS, calculateIRT, formatDate } from '../utils';
+import { generateUUID, formatCurrency, calculateINSS, calculateIRT, formatDate } from '../utils';
 import { supabase } from '../services/supabaseClient';
 import {
     Users, UserPlus, Search, Filter, Printer, FileText, Trash2, Edit2, Eye, Ban, CheckCircle,
@@ -20,6 +20,7 @@ interface EmployeesProps {
     onIssueContract?: (emp: Employee) => void;
     onPrintSlip?: (emp: Employee) => void;
     onChangeView?: (view: any) => void;
+    onExecuteProcess?: (empId: string) => void;
 }
 
 const INSS_INDEXED_PROFESSIONS = [
@@ -58,7 +59,7 @@ const INSS_INDEXED_PROFESSIONS = [
 
 const LOCAL_STORAGE_PROFS_KEY = 'imatec_profissoes_locais';
 
-const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLocations, professions, onIssueContract, onPrintSlip, onChangeView }) => {
+const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLocations, professions, onIssueContract, onPrintSlip, onChangeView, onExecuteProcess }) => {
     const [view, setView] = useState<'LIST' | 'FORM' | 'CLASSIFIER_LIST' | 'CLASSIFIER_FORM' | 'CLASSIFIER_SIMULATOR'>('LIST');
     const [classifierTab, setClassifierTab] = useState<'EMPLOYEES' | 'PROFESSIONS'>('EMPLOYEES');
     const [simulationData, setSimulationData] = useState<Partial<Employee>>({});
@@ -305,7 +306,7 @@ const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLo
 
         setIsLoadingCloud(true);
         try {
-            const empId = formData.id || generateId();
+            const empId = formData.id || generateUUID();
             const empObj: Employee = {
                 ...formData as Employee,
                 id: empId,
@@ -314,7 +315,7 @@ const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLo
                 admissionDate: formData.admissionDate || new Date().toISOString().split('T')[0],
             };
 
-            const { error } = await supabase.from('funcionarios').upsert({
+            const payload = {
                 id: ensureUUID(empId),
                 nome: empObj.name,
                 nif: empObj.nif,
@@ -334,7 +335,7 @@ const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLo
                 endereco: empObj.address,
                 municipio: empObj.municipality,
                 bairro: empObj.neighborhood,
-                work_location_id: ensureUUID(empObj.workLocationId || ''),
+                work_location_id: empObj.workLocationId ? ensureUUID(empObj.workLocationId) : null,
                 empresa_id: '00000000-0000-0000-0000-000000000001',
                 tipo_contrato: empObj.contractType,
                 employee_number: empObj.employeeNumber,
@@ -377,15 +378,17 @@ const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLo
                 tipo_documento: empObj.documentType,
                 numero_documento: empObj.documentNumber,
                 entidade_emissora: empObj.issuer,
-                data_emissao: empObj.issueDate,
-                data_validade: empObj.expiryDate,
+                data_emissao: (empObj.issueDate && empObj.issueDate.length === 10) ? empObj.issueDate : null,
+                data_validade: (empObj.expiryDate && empObj.expiryDate.length === 10) ? empObj.expiryDate : null,
                 naturalidade: empObj.naturality,
                 nome_pai: empObj.fatherName,
                 nome_mae: empObj.motherName,
                 solicitado_por: empObj.requestedBy,
                 motivo_admissao: empObj.admissionReason,
                 horario_semanal: empObj.weeklySchedule
-            });
+            };
+
+            const { error } = await supabase.from('funcionarios').upsert(payload);
 
             if (error) throw error;
 
@@ -691,7 +694,7 @@ const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLo
                                             <td className="p-3 border-r border-slate-100 text-right font-black text-emerald-600">{formatCurrency(net).replace('Kz', '')}</td>
                                             <td className="p-2 text-center">
                                                 <button
-                                                    onClick={() => handleOpenSimulation(emp)}
+                                                    onClick={() => (onExecuteProcess ? onExecuteProcess(emp.id) : handleOpenSimulation(emp))}
                                                     className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-bold text-[9px] uppercase shadow-sm flex items-center gap-1.5 mx-auto transition-all hover:scale-105 active:scale-95"
                                                 >
                                                     <Calculator size={12} /> Executar

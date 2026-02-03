@@ -129,6 +129,7 @@ export type ViewState =
   | 'HR_PERFORMANCE'
   | 'HR_CONTRACT_ISSUE'
   | 'HR_TRANSFER_ORDERS'
+  | 'HR_SALARY_PROC'
   | 'SETTINGS'
   | 'SETTINGS_TAX_TABLE'
   | 'POS_GROUP'
@@ -156,7 +157,9 @@ export type ViewState =
   | 'REPORTS_MONTHLY'
   | 'REPORTS_YEARLY'
   | 'REPORTS_DEBTS'
-  | 'REPORTS_MOVEMENTS';
+  | 'REPORTS_MOVEMENTS'
+  | 'AGRIBUSINESS'
+  | 'CHURCH_MANAGEMENT';
 
 export interface User {
   id: string;
@@ -214,6 +217,29 @@ export interface Client {
   iban?: string;
   isAccountShared?: boolean;
   transactions: any[];
+}
+
+export interface AgriProject {
+  id: string;
+  name: string;
+  type: string;
+  area: number;
+  startDate: string;
+  expectedHarvestDate: string;
+  status: 'PLANNING' | 'IN_PROGRESS' | 'HARVESTED' | 'CANCELLED';
+  costEstimate: number;
+  actualCost: number;
+}
+
+export interface ChurchCongregation {
+  id: string;
+  name: string;
+  pastor: string;
+  location: string;
+  membersCount: number;
+  foundedDate: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  category: string;
 }
 
 export interface TaxRate {

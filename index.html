@@ -1,63 +1,76 @@
-
 <!DOCTYPE html>
 <html lang="pt-PT">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FaturaPro AI</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💼</text></svg>">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: #f1f5f9;
-      }
-      /* Custom scrollbar for sidebar */
-      ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 3px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaturaPro AI</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💼</text></svg>">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f1f5f9;
+    }
+
+    /* Custom scrollbar for sidebar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    /* Smart Field Signaling Animation */
+    @keyframes border-pulse {
+      0% {
+        border-color: #3b82f6;
+        /* Blue-500 */
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
       }
 
-      /* Smart Field Signaling Animation */
-      @keyframes border-pulse {
-        0% {
-          border-color: #3b82f6; /* Blue-500 */
-          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-        }
-        50% {
-          border-color: #f59e0b; /* Amber-500 */
-          box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
-        }
-        100% {
-          border-color: #3b82f6; /* Blue-500 */
-          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-        }
+      50% {
+        border-color: #f59e0b;
+        /* Amber-500 */
+        box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
       }
 
-      /* Apply to all inputs, selects, and textareas when focused */
-      input:focus, select:focus, textarea:focus {
-        animation: border-pulse 1.5s infinite ease-in-out;
-        outline: none;
+      100% {
+        border-color: #3b82f6;
+        /* Blue-500 */
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
       }
-      
-      /* Apply to primary buttons when active/focused */
-      button[type="submit"]:focus, button.primary-action:focus {
-         animation: border-pulse 1.5s infinite ease-in-out;
-         outline: none;
-         ring: 2px;
-      }
-    </style>
+    }
+
+    /* Apply to all inputs, selects, and textareas when focused */
+    input:focus,
+    select:focus,
+    textarea:focus {
+      animation: border-pulse 1.5s infinite ease-in-out;
+      outline: none;
+    }
+
+    /* Apply to primary buttons when active/focused */
+    button[type="submit"]:focus,
+    button.primary-action:focus {
+      animation: border-pulse 1.5s infinite ease-in-out;
+      outline: none;
+      ring: 2px;
+    }
+  </style>
   <script type="importmap">
 {
   "imports": {
@@ -74,10 +87,12 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+  <link rel="stylesheet" href="/index.css">
 </head>
-  <body>
-    <div id="root"></div>
+
+<body>
+  <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
+
 </html>

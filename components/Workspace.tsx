@@ -50,7 +50,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ invoices, purchases, clients, onV
         setIsLoadingProjects(true);
         try {
             const { data, error } = await supabase
-                .from('locais_trabalho')
+                .from('local_trabalho')
                 .select('*')
                 .order('created_at', { ascending: false });
 
@@ -86,6 +86,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ invoices, purchases, clients, onV
                 data_abertura: newProject.startDate,
                 data_encerramento: newProject.endDate,
                 titulo: newProject.title,
+                nome: newProject.title, // Fix: 'nome' is NOT NULL and required
                 codigo: newProject.code || `OBR-${Math.floor(Math.random() * 1000)}`,
                 efectivos_dia: newProject.personnelPerDay,
                 total_efectivos: newProject.totalPersonnel,
@@ -97,8 +98,8 @@ const Workspace: React.FC<WorkspaceProps> = ({ invoices, purchases, clients, onV
             };
 
             const { error } = editingProject
-                ? await supabase.from('locais_trabalho').update(payload).eq('id', editingProject.id)
-                : await supabase.from('locais_trabalho').insert(payload);
+                ? await supabase.from('local_trabalho').update(payload).eq('id', editingProject.id)
+                : await supabase.from('local_trabalho').insert(payload);
 
             if (error) throw error;
 

@@ -47,6 +47,8 @@ import TaxDocsManager from './TaxDocsManager';
 import GeneralMovements from './GeneralMovements';
 import WithholdingTaxManager from './WithholdingTaxManager';
 import TransferOrderView from './TransferOrderView';
+import Agribusiness from './Agribusiness';
+import ChurchManagement from './ChurchManagement';
 
 import { supabase } from '../services/supabaseClient';
 
@@ -386,7 +388,7 @@ const App = () => {
 
   const fetchWorkLocationsCloud = async () => {
     try {
-      const { data } = await supabase.from('locais_trabalho').select('*');
+      const { data } = await supabase.from('local_trabalho').select('*');
       if (data) {
         setWorkLocations(data.map(d => ({
           id: d.id,
@@ -788,7 +790,7 @@ const App = () => {
                 quantidade: item.quantity,
                 armazem_id: whUUID,
                 documento_ref: finalPurchase.documentNumber,
-                notes: `Entrada Automática Compra: ${finalPurchase.documentNumber}`,
+                notas: `Entrada Automática Compra: ${finalPurchase.documentNumber}`,
                 expiry_date: item.expiryDate || null,
                 empresa_id: companyIdForStockPur
               });
@@ -802,21 +804,21 @@ const App = () => {
       const companyIdToUse = await getSecureEmpresaId();
       const purchasePayload = {
         id: ensureUUID(finalPurchase.id) || undefined,
-        tipo_documento: finalPurchase.type,
+        tipo: finalPurchase.type,
         numero_documento: finalPurchase.documentNumber,
         fornecedor_id: ensureUUID(finalPurchase.supplierId),
         fornecedor_nome: finalPurchase.supplier,
-        nif_fornecedor: finalPurchase.nif,
+        fornecedor_nif: finalPurchase.nif, // Corrected column name? Check schema 279: column 'fornecedor_nif' exists.
         data_emissao: finalPurchase.date,
-        valor_subtotal: finalPurchase.subtotal,
+        subtotal: finalPurchase.subtotal,
         valor_iva: finalPurchase.taxAmount,
-        valor_total: finalPurchase.total,
+        total: finalPurchase.total,
         status: finalPurchase.status,
         empresa_id: companyIdToUse,
-        items: finalPurchase.items,
+        itens: finalPurchase.items,
         hash: finalPurchase.hash,
         armazem_id: ensureUUID(finalPurchase.warehouseId),
-        work_location_id: ensureUUID(finalPurchase.workLocationId),
+        local_trabalho_id: ensureUUID(finalPurchase.workLocationId),
         metodo_pagamento: finalPurchase.paymentMethod,
         caixa_id: ensureUUID(finalPurchase.cashRegisterId)
       };
@@ -1150,6 +1152,11 @@ const App = () => {
 
       case 'REPORTS_MOVEMENTS':
         return <GeneralMovements invoices={certifiedInvoices} purchases={validPurchases} clients={clients} products={products} cashRegisters={cashRegisters} workLocations={workLocations} />;
+
+      case 'AGRIBUSINESS':
+        return <Agribusiness />;
+      case 'CHURCH_MANAGEMENT':
+        return <ChurchManagement />;
 
       default: return <div className="p-8 text-center text-slate-400">Selecione um módulo para continuar.</div>;
     }
