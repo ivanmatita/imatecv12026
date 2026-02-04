@@ -67,6 +67,37 @@ export class IntegrationAssistant {
             throw error;
         }
     }
+    /**
+     * Salva dados (criar ou atualizar) de forma genérica
+     */
+    static async salvarDados(modulo: 'clientes' | 'fornecedores' | 'vendas' | 'compras' | 'caixas' | 'series' | 'utilizadores' | 'metricas' | 'armazens' | 'produtos', dados: any) {
+        try {
+            const isUpdate = !!dados.id;
+            let entidade: 'cliente' | 'fornecedor' | 'fatura' | null = null;
+
+            // Map module to entity type for processarOperacao
+            if (modulo === 'clientes') entidade = 'cliente';
+            else if (modulo === 'fornecedores') entidade = 'fornecedor';
+            else if (modulo === 'vendas') entidade = 'fatura';
+
+            if (entidade) {
+                // Use robust flow with validation
+                return await this.processarOperacao(isUpdate ? 'atualizar' : 'criar', entidade, dados, dados.id);
+            } else {
+                // Direct BackendAssistant call for others (bypass validation for now)
+                if (isUpdate) {
+                    // @ts-ignore
+                    return await BackendAssistant[modulo].atualizar(dados.id, dados);
+                } else {
+                    // @ts-ignore
+                    return await BackendAssistant[modulo].criar(dados);
+                }
+            }
+        } catch (error: any) {
+            console.error(`Erro ao salvar ${modulo}:`, error);
+            throw error;
+        }
+    }
 
     /**
      * Mapeia dados do Supabase para o formato da aplicação

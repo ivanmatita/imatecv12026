@@ -226,8 +226,8 @@ const App: React.FC = () => {
 
                 if (fetchedClients) setClients(fetchedClients.length > 0 ? fetchedClients : MOCK_CLIENTS);
                 if (fetchedSuppliers) setSuppliers(fetchedSuppliers.length > 0 ? fetchedSuppliers : MOCK_SUPPLIERS);
-                if (fetchedInvoices) setInvoices(fetchedInvoices.length > 0 ? fetchedInvoices : MOCK_INVOICES);
-                if (fetchedPurchases) setPurchases(fetchedPurchases.length > 0 ? fetchedPurchases : []);
+                if (fetchedInvoices) setInvoices(fetchedInvoices);
+                if (fetchedPurchases) setPurchases(fetchedPurchases);
                 if (fetchedWarehouses) setWarehouses(fetchedWarehouses.length > 0 ? fetchedWarehouses : MOCK_WAREHOUSES);
                 if (fetchedSeries) setSeries(fetchedSeries.length > 0 ? fetchedSeries : MOCK_SERIES);
                 if (fetchedUsers) setUsers(fetchedUsers.length > 0 ? fetchedUsers : MOCK_USERS);
@@ -264,27 +264,53 @@ const App: React.FC = () => {
         setCurrentView('CLIENTS');
     };
 
-    const handleSaveInvoice = (invoice: Invoice, seriesId: string, action?: 'PRINT' | 'CERTIFY') => {
-        const docSeries = series.find(s => s.id === seriesId);
+    const handleSaveInvoice = async (invoice: Invoice, seriesId: string, action?: 'PRINT' | 'CERTIFY') => {
         let finalInvoice = { ...invoice };
+        const docSeries = series.find(s => s.id === seriesId);
 
-        // If creating new or draft, assign number
-        if (!invoice.isCertified && (!invoice.id || !invoices.find(i => i.id === invoice.id))) {
-            const number = `${docSeries?.code || 'S'} ${docSeries?.year}/${docSeries?.currentSequence}`;
-            finalInvoice = {
-                ...invoice,
-                number,
-                seriesCode: docSeries?.code
-            };
+        // LOGIC: Generate Number & Hash ONLY on Certification
+        if (action === 'CERTIFY' && !finalInvoice.isCertified) {
             if (docSeries) {
-                setSeries(series.map(s => s.id === seriesId ? { ...s, currentSequence: s.currentSequence + 1 } : s));
+                try {
+                    // Fetch next number atomically from DB
+                    const nextNumRes = await import('./services/backendAssistant').then(m => m.BackendAssistant.series.proximoNumero(seriesId, finalInvoice.type));
+
+                    if (nextNumRes.success && nextNumRes.data) {
+                        finalInvoice.number = nextNumRes.data.number;
+                        // Update local series state
+                        setSeries(prev => prev.map(s => s.id === seriesId ? {
+                            ...s,
+                            sequences: { ...s.sequences, [finalInvoice.type]: nextNumRes.data.sequence }
+                        } : s));
+                    } else {
+                        throw new Error(nextNumRes.error || "Falha ao gerar sequência");
+                    }
+
+                    finalInvoice.isCertified = true;
+                    finalInvoice.hash = generateInvoiceHash(finalInvoice);
+                } catch (e: any) {
+                    alert("Erro ao certificar documento: " + e.message);
+                    return;
+                }
+            } else {
+                alert("Série não encontrada!");
+                return;
             }
+        } else if (!finalInvoice.id || !finalInvoice.number) {
+            // New Draft
+            if (!finalInvoice.number) finalInvoice.number = 'RASCUNHO';
         }
 
-        if (action === 'CERTIFY') {
-            finalInvoice.isCertified = true;
-            finalInvoice.hash = generateInvoiceHash(finalInvoice);
+        finalInvoice.seriesCode = docSeries?.code;
+
+        // --- SUPABSE INTEGRATION: SAVE INVOICE ---
+        try {
+            await IntegrationAssistant.salvarDados('vendas', finalInvoice);
+        } catch (err) {
+            console.error("Erro ao salvar venda:", err);
+            alert("Erro ao salvar documento na nuvem.");
         }
+        // ---------------------------------------------------------
 
         const existingIndex = invoices.findIndex(i => i.id === finalInvoice.id);
         if (existingIndex >= 0) {
@@ -415,6 +441,78 @@ const App: React.FC = () => {
         setCurrentView('CREATE_INVOICE');
     }
 
+    const handleCancelInvoice = async (id: string, reason: string) => {
+        const original = invoices.find(i => i.id === id);
+        if (!original) return;
+
+        // 1. Cancel Original
+        const updatedOriginal = { ...original, status: InvoiceStatus.CANCELLED, cancellationReason: reason };
+
+        // 2. Auto-Generate NC
+        let newNC: Invoice | null = null;
+        let updatedSeries = [...series];
+
+        if (original.isCertified && original.type !== InvoiceType.NC) {
+            const seriesId = original.seriesId;
+            const docSeries = series.find(s => s.id === seriesId);
+
+            if (docSeries) {
+                try {
+                     // Get Sequential Number for NC
+                    const nextNumRes = await import('./services/backendAssistant').then(m => m.BackendAssistant.series.proximoNumero(seriesId, InvoiceType.NC));
+                    
+                    if (nextNumRes.success && nextNumRes.data) {
+                        const number = nextNumRes.data.number;
+                        
+                        newNC = {
+                            ...original,
+                            id: generateId(),
+                            type: InvoiceType.NC,
+                            number,
+                            date: new Date().toISOString().split('T')[0],
+                            time: new Date().toLocaleTimeString('pt-PT', {hour: '2-digit', minute:'2-digit'}),
+                            status: InvoiceStatus.PAID, // NC is final
+                            sourceInvoiceId: original.id,
+                            notes: `Estorno referente a anulação do documento ${original.number}. Motivo: ${reason}`,
+                            hash: generateInvoiceHash({ ...original, uniqueId: generateId() }), // Simplistic hash generation
+                            createdAt: new Date().toISOString()
+                        };
+
+                        // Update series locally
+                        updatedSeries = series.map(s => s.id === seriesId ? {
+                            ...s,
+                            sequences: { ...s.sequences, [InvoiceType.NC]: nextNumRes.data.sequence }
+                        } : s);
+                    }
+                } catch (e) {
+                    console.error("Erro ao gerar NC:", e);
+                    alert("Erro ao gerar nota de crédito. Verifique a conexão.");
+                    return;
+                }
+            }
+        }
+
+        // Update Local State
+        const newInvoicesList = invoices.map(i => i.id === id ? updatedOriginal : i);
+        if (newNC) newInvoicesList.unshift(newNC);
+        setInvoices(newInvoicesList);
+        setSeries(updatedSeries);
+
+        // Save to Supabase
+        try {
+            await IntegrationAssistant.salvarDados('vendas', updatedOriginal);
+            if (newNC) {
+                await IntegrationAssistant.salvarDados('vendas', newNC);
+                const s = series.find(s => s.id === original.seriesId);
+                if (s) await IntegrationAssistant.salvarDados('series', { ...s, currentSequence: s.currentSequence + 1 });
+            }
+            alert("Documento anulado e Nota de Crédito gerada com sucesso.");
+        } catch (error) {
+            console.error("Erro ao salvar anulação no Supabase:", error);
+            alert("Erro ao salvar alterações na nuvem.");
+        }
+    };
+
     const handleSavePurchase = (purchase: Purchase) => {
         setPurchases([...purchases, purchase]);
         // Stock updates happen here for simplicity (Mock), real app would use strict warehouse entry docs
@@ -444,7 +542,7 @@ const App: React.FC = () => {
                     onDelete={(id) => setInvoices(invoices.filter(i => i.id !== id))}
                     onUpdate={handleEditInvoice}
                     onLiquidate={handleLiquidate}
-                    onCancelInvoice={(id, reason) => setInvoices(invoices.map(i => i.id === id ? { ...i, status: InvoiceStatus.CANCELLED, cancellationReason: reason } : i))}
+                    onCancelInvoice={handleCancelInvoice}
                     onCertify={(inv) => handleSaveInvoice(inv, inv.seriesId, 'CERTIFY')}
                     onCreateNew={() => handleCreateInvoice()}
                     onCreateDerived={handleCreateDerived}

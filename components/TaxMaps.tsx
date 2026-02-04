@@ -170,7 +170,7 @@ const TaxMaps: React.FC<TaxMapsProps> = ({ company, payroll, employees, onClose 
 
             {/* Print Area Container */}
             <div className="flex-1 overflow-auto p-4 flex justify-center bg-slate-200/50 print:p-0 print:bg-white">
-                <div id="tax-map-print-area" className="bg-white shadow-2xl p-8 w-[350mm] min-h-[250mm] max-w-full print:shadow-none print:w-full print:p-4 font-sans border border-slate-300">
+                <div id="tax-map-print-area" className="bg-white shadow-2xl p-8 w-[380mm] min-h-[250mm] max-w-full print:shadow-none print:w-full print:p-4 font-sans border border-slate-300 scale-100 origin-top-left">
 
                     {/* Header Info */}
                     <div className="flex justify-between items-start mb-6 text-[11px] font-bold text-slate-800">
@@ -187,8 +187,8 @@ const TaxMaps: React.FC<TaxMapsProps> = ({ company, payroll, employees, onClose 
 
                     {/* MAIN TABLE */}
                     <div className="border border-black overflow-hidden relative">
-                        {/* Table Header Structure (Complex Grid) */}
-                        <div className="grid grid-cols-[1.5fr_1.2fr_1.2fr_1fr_1.8fr_1.2fr_1.2fr_3fr_3.5fr_1.5fr_1.8fr_1fr] text-[8px] font-black uppercase text-center bg-slate-50/50">
+                        {/* Table Header Structure (Complex Grid) - Adjusted cols for better visibility */}
+                        <div className="grid grid-cols-[1.5fr_1.2fr_1.2fr_1fr_1.8fr_1.2fr_1.2fr_3fr_3.5fr_1.5fr_1.8fr_1.1fr] text-[10px] font-black uppercase text-center bg-slate-50/50">
 
                             {/* No Identificação */}
                             <div className="border-r border-b border-black p-1 flex flex-col justify-between">
@@ -311,10 +311,10 @@ const TaxMaps: React.FC<TaxMapsProps> = ({ company, payroll, employees, onClose 
                                 {currentPeriodPayroll.map((slip) => {
                                     const emp = employees.find(e => e.id === slip.employeeId);
                                     return (
-                                        <div key={slip.employeeId} className="grid grid-cols-[1.5fr_1.2fr_1.2fr_1fr_1.8fr_1.2fr_1.2fr_3fr_3.5fr_1.5fr_1.8fr_1fr] text-[8px] font-bold text-slate-800 tracking-tighter">
+                                        <div key={slip.employeeId} className="grid grid-cols-[1.5fr_1.2fr_1.2fr_1fr_1.8fr_1.2fr_1.2fr_3fr_3.5fr_1.5fr_1.8fr_1.1fr] text-[10px] font-bold text-slate-800 tracking-tighter hover:bg-slate-50">
                                             {/* Data cells matching header grid */}
                                             <div className="border-r border-slate-200 p-1 flex flex-col">
-                                                <span className="uppercase text-[9px] truncate">{emp?.name || slip.employeeName}</span>
+                                                <span className="uppercase text-[10px] truncate">{emp?.name || slip.employeeName}</span>
                                                 <span className="text-slate-500">{emp?.biNumber || '---'}</span>
                                                 <span className="text-slate-500">{emp?.nif || '---'}</span>
                                                 <span className="text-slate-500">{emp?.ssn || '---'}</span>
@@ -402,8 +402,8 @@ const TaxMaps: React.FC<TaxMapsProps> = ({ company, payroll, employees, onClose 
 
                         {/* TOTALS ROW - MATCHING IMAGE */}
                         <div className="bg-[#f0f0f0] border-t-2 border-black">
-                            <div className="p-1 px-4 text-[9px] font-black uppercase text-slate-700">Valores Totais mensais</div>
-                            <div className="grid grid-cols-[1.5fr_1.2fr_1.2fr_1fr_1.8fr_1.2fr_1.2fr_3fr_3.5fr_1.5fr_1.8fr_1fr] text-[10px] font-black py-2 tracking-tighter">
+                            <div className="p-1 px-4 text-[11px] font-black uppercase text-slate-700">Valores Totais mensais</div>
+                            <div className="grid grid-cols-[1.5fr_1.2fr_1.2fr_1fr_1.8fr_1.2fr_1.2fr_3fr_3.5fr_1.5fr_1.8fr_1.1fr] text-[11px] font-black py-2 tracking-tighter">
                                 <div></div>
                                 <div></div>
                                 <div></div>

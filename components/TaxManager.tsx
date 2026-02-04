@@ -12,7 +12,7 @@ interface TaxManagerProps {
     stockMovements?: StockMovement[]; // Added for automation
 }
 
-const TaxManager: React.FC<TaxManagerProps> = ({ invoices, company, purchases = [], payroll = [], stockMovements = [] }) => {
+const TaxManager: React.FC<TaxManagerProps> = ({ invoices = [], company, purchases = [], payroll = [], stockMovements = [] }) => {
     const [activeTab, setActiveTab] = useState('ANUAL');
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());

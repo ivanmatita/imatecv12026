@@ -17,8 +17,9 @@ export const formatDate = (dateString: string): string => {
   });
 };
 
+// Replaced short ID with UUID to ensure database compatibility
 export const generateId = (): string => {
-  return Math.random().toString(36).substr(2, 9);
+  return generateUUID();
 };
 
 // UUID Helper for Supabase (Critical Fix)
@@ -28,12 +29,21 @@ export const isValidUUID = (uuid: string): boolean => {
   return uuidRegex.test(uuid);
 };
 
+export const ensureUUID = (id: string | undefined | null): string => {
+  if (!id || id === 'CONSUMIDOR_FINAL' || id === '') return '00000000-0000-0000-0000-000000000000';
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) return id;
+  // Deterministic fallback for legacy IDs
+  const hex = id.split('').map(c => c.charCodeAt(0).toString(16)).join('').padEnd(32, '0').substring(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(12, 15)}-a${hex.slice(15, 18)}-${hex.slice(18, 30)}`;
+};
+
 export const generateUUID = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
   // Simple fallback for older environments
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
@@ -44,7 +54,7 @@ export const generateInvoiceHash = (invoice: Invoice): string => {
   // In a real scenario, this involves RSA-SHA1 signing of data
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let hash = "";
-  for(let i=0; i<4; i++) {
+  for (let i = 0; i < 4; i++) {
     hash += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return hash;
@@ -101,9 +111,9 @@ const centenas = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhen
 const converteGrupo = (n: number): string => {
   if (n === 0) return "";
   if (n === 100) return "cem";
-  
+
   let extenso = "";
-  
+
   const c = Math.floor(n / 100);
   const d = Math.floor((n % 100) / 10);
   const u = n % 10;
@@ -145,20 +155,20 @@ export const numberToExtenso = (valor: number, moedaPlural: string = "Kwanzas", 
 
   while (resto > 0) {
     const grupo = resto % 1000;
-    
+
     if (grupo > 0) {
       let grupoExtenso = converteGrupo(grupo);
-      
+
       // Tratamento especial para "um mil" -> "mil"
       if (contador === 1 && grupo === 1) {
-        grupoExtenso = ""; 
+        grupoExtenso = "";
       }
 
       const qualificador = grupo === 1 ? qualificadores[contador][0] : qualificadores[contador][1];
-      
+
       // Concatenação
       const prefixo = extenso ? (contador > 0 && grupo < 100 ? " e " : " ") : ""; // simplificação de conectivos
-      
+
       extenso = `${grupoExtenso} ${qualificador}${prefixo}${extenso}`;
     }
 
@@ -167,16 +177,16 @@ export const numberToExtenso = (valor: number, moedaPlural: string = "Kwanzas", 
   }
 
   extenso = extenso.trim();
-  
+
   // Adicionar nome da moeda
   if (inteiro === 1) extenso += " " + moedaSingular;
   else if (inteiro > 0) {
-      // Se termina em milhão/milhões/etc, adiciona "de"
-      if (extenso.endsWith("ilhões") || extenso.endsWith("ilhão")) {
-          extenso += " de " + moedaPlural;
-      } else {
-          extenso += " " + moedaPlural;
-      }
+    // Se termina em milhão/milhões/etc, adiciona "de"
+    if (extenso.endsWith("ilhões") || extenso.endsWith("ilhão")) {
+      extenso += " de " + moedaPlural;
+    } else {
+      extenso += " " + moedaPlural;
+    }
   }
 
   // Tratamento de decimais (Cêntimos)
@@ -197,7 +207,7 @@ export const calculateINSS = (baseAmount: number, foodSubsidy: number = 0, trans
   const foodTaxable = Math.max(0, foodSubsidy - 30000);
   const transportTaxable = Math.max(0, transportSubsidy - 30000);
   const totalTaxable = baseAmount + foodTaxable + transportTaxable;
-  return totalTaxable * 0.03; 
+  return totalTaxable * 0.03;
 };
 
 export const calculateINSSEntity = (baseAmount: number, foodSubsidy: number = 0, transportSubsidy: number = 0): number => {
@@ -214,7 +224,7 @@ export const calculateIRT = (baseAmount: number, inss: number, foodSubsidy: numb
   const foodTaxable = Math.max(0, foodSubsidy - 30000);
   const transportTaxable = Math.max(0, transportSubsidy - 30000);
   const taxable = baseAmount + foodTaxable + transportTaxable - inss;
-  
+
   if (taxable <= 100000) return 0;
   if (taxable <= 150000) return (taxable - 100000) * 0.10 + 0;
   if (taxable <= 200000) return (taxable - 150000) * 0.15 + 5000;
@@ -224,11 +234,11 @@ export const calculateIRT = (baseAmount: number, inss: number, foodSubsidy: numb
   if (taxable <= 1500000) return (taxable - 1000000) * 0.22 + 176500;
   if (taxable <= 2000000) return (taxable - 1500000) * 0.23 + 286500;
   if (taxable <= 2500000) return (taxable - 2000000) * 0.24 + 401500;
-  
+
   return (taxable - 2500000) * 0.25 + 521500;
 };
 
 export const roundToNearestBank = (value: number): number => {
-    // Arredondamento para as centenas conforme imagem de referência (Magic)
-    return Math.floor(value / 100) * 100;
+  // Arredondamento para as centenas conforme imagem de referência (Magic)
+  return Math.floor(value / 100) * 100;
 };

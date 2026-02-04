@@ -60,7 +60,7 @@ import {
   VatSettlement, OpeningBalance, UserActivityLog, POSConfig, Contract, AttendanceRecord, Profession, PurchaseType, CashClosure as CashClosureType,
   IntegrationStatus, WorkProject, TaxRate, Bank, Metric, TransferOrder
 } from '../types';
-import { Menu, Calendar as CalendarIcon, RefreshCw, AlertCircle, Clock as ClockIcon, ShieldCheck, Loader2, ArrowRightLeft, Eye } from 'lucide-react';
+import { Menu, Calendar as CalendarIcon, RefreshCw, AlertCircle, Clock as ClockIcon, ShieldCheck, Loader2, ArrowRightLeft, Eye, Printer, Search, Paperclip, Trash2 } from 'lucide-react';
 import { generateId, generateInvoiceHash, getDocumentPrefix, formatDate, formatCurrency } from '../utils';
 
 const DEFAULT_FALLBACK_COMPANY_ID = '00000000-0000-0000-0000-000000000001';
@@ -98,6 +98,7 @@ const App = () => {
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [cashRegisters, setCashRegisters] = useState<CashRegister[]>([]);
   const [workLocations, setWorkLocations] = useState<WorkLocation[]>([]);
+  const [autoOpenTransferOrderId, setAutoOpenTransferOrderId] = useState<string | null>(null);
   const [pgcAccounts, setPgcAccounts] = useState<PGCAccount[]>([]);
   const [hrEmployees, setHrEmployees] = useState<Employee[]>([]);
   const [hrTransactions, setHrTransactions] = useState<HrTransaction[]>([]);
@@ -528,7 +529,7 @@ const App = () => {
             total: Number(f.total) || 0,
             currency: f.moeda || 'AOA',
             exchangeRate: Number(f.taxa_cambio) || 1,
-            status: f.status === 'Pago' ? InvoiceStatus.PAID : f.status === 'Anulado' ? InvoiceStatus.CANCELLED : InvoiceStatus.PENDING,
+            status: f.status === 'Pago' ? InvoiceStatus.PAID : (f.status && f.status.toUpperCase() === 'ANULADO') ? InvoiceStatus.CANCELLED : InvoiceStatus.PENDING,
             isCertified: isCertified,
             hash: f.hash || '',
             companyId: f.empresa_id || DEFAULT_FALLBACK_COMPANY_ID,
@@ -617,25 +618,33 @@ const App = () => {
         finalInv.integrationStatus = IntegrationStatus.VALIDATED;
         finalInv.processedAt = new Date().toISOString();
 
-        const typeKey = inv.type as string;
-        const currentSeqForType = docSeries?.sequences?.[typeKey] || 0;
-        const nextSeq = currentSeqForType + 1;
+        const typeKey = getDocumentPrefix(inv.type);
 
-        const prefix = getDocumentPrefix(inv.type);
-        const number = `${prefix} ${docSeries?.code || 'S'} ${docSeries?.year}/${nextSeq}`;
+        try {
+          const { data: nextSeq, error: seqError } = await supabase.rpc('get_next_sequence', {
+            p_series_id: sId,
+            p_doc_type: typeKey
+          });
 
-        finalInv.number = number;
-        finalInv.seriesCode = docSeries?.code;
+          if (seqError) throw seqError;
 
-        if (docSeries) {
-          const updatedSequences = { ...docSeries.sequences, [typeKey]: nextSeq };
-          setSeries(series.map(s => s.id === sId ? { ...s, sequences: updatedSequences } : s));
+          const prefix = getDocumentPrefix(inv.type);
+          // Format: FT S2026/1
+          const number = `${prefix} ${docSeries?.code || 'S'}${docSeries?.year}/${nextSeq}`;
 
-          // Update sequence in Cloud
-          await supabase.from('series').update({
-            sequencia_atual: nextSeq,
-            sequencias_por_tipo: updatedSequences
-          }).eq('id', sId);
+          finalInv.number = number;
+          finalInv.seriesCode = docSeries?.code;
+
+          // Update local series state merely to reflect changes (optional but good for UI)
+          if (docSeries) {
+            const updatedSequences = { ...docSeries.sequences, [typeKey]: nextSeq };
+            setSeries(prev => prev.map(s => s.id === sId ? { ...s, sequences: updatedSequences } : s));
+          }
+
+        } catch (e: any) {
+          alert("Erro ao gerar sequência documental: " + e.message);
+          setIsLoading(false);
+          return;
         }
       }
 
@@ -852,64 +861,196 @@ const App = () => {
 
   /* Fix: Added missing handleCancelInvoice function */
   const handleCancelInvoice = async (id: string, reason: string) => {
-    setInvoices(prev => prev.map(i => i.id === id ? { ...i, status: InvoiceStatus.CANCELLED, cancellationReason: reason } : i));
+    const original = invoices.find(i => i.id === id);
+    if (!original) return;
+
+    if (!window.confirm(`Deseja realmente ANULAR o documento ${original.number}? Esta ação gerará uma Nota de Crédito automaticamente.`)) return;
+
+    setIsLoading(true);
+
     try {
-      const uuid = ensureUUID(id);
-      if (uuid) {
-        await supabase.from('faturas').update({ status: 'Anulado', cancellation_reason: reason }).eq('id', uuid);
+      const seriesRec = series.find(s => s.id === original.seriesId) || series[0];
+      const typePrefix = "NC";
+
+      const { data: nextSeq, error: seqError } = await supabase.rpc('get_next_sequence', {
+        p_series_id: ensureUUID(seriesRec.id),
+        p_doc_type: typePrefix
+      });
+
+      if (seqError) throw seqError;
+
+      const ncNumber = `${typePrefix} ${seriesRec.code}${seriesRec.year}/${nextSeq}`;
+
+      const ncId = generateId();
+      const now = new Date();
+      // Create hash for NC - important for certification
+      const ncHash = generateInvoiceHash({ ...original, id: ncId, date: now.toISOString(), number: ncNumber, type: InvoiceType.NC });
+
+      const creditNote: Invoice = {
+        ...original,
+        id: ncId,
+        type: InvoiceType.NC,
+        number: ncNumber,
+        date: now.toISOString().split('T')[0],
+        time: now.toLocaleTimeString(),
+        status: InvoiceStatus.PAID,
+        isCertified: true,
+        sourceInvoiceId: original.id,
+        cancellationReason: reason,
+        hash: ncHash,
+        total: original.total,
+        items: original.items.map(item => ({ ...item, id: generateId() })),
+        operatorName: currentUser?.name,
+        seriesId: seriesRec.id,
+        seriesCode: seriesRec.code
+      };
+
+      setInvoices(prev => prev.map(i => i.id === id ? { ...i, status: InvoiceStatus.CANCELLED, cancellationReason: `Motivo: ${reason} (NC: ${ncNumber})` } : i).concat(creditNote));
+
+      // Update Original - CRITICAL: Must persist 'Anulado' and link to NC
+      // We store the NC number in the reason or a specific field if available to ensuring traceability (R7)
+      const updatePayload = {
+        status: 'Anulado',
+        cancellation_reason: `Motivo: ${reason} | Nota de Crédito Gerada: ${ncNumber}`,
+        updated_at: new Date().toISOString()
+      };
+
+      await supabase.from('faturas').update(updatePayload).eq('id', ensureUUID(id));
+
+      // Insert NC
+      const companyIdToUse = await getSecureEmpresaId();
+
+      const ncPayload = {
+        id: ensureUUID(ncId),
+        empresa_id: companyIdToUse,
+        cliente_id: ensureUUID(creditNote.clientId),
+        cliente_nome: creditNote.clientName,
+        cliente_nif: creditNote.clientNif,
+        numero: ncNumber,
+        tipo: 'NC',
+        data_emissao: creditNote.date,
+        data_vencimento: creditNote.dueDate,
+        data_contabilistica: creditNote.accountingDate,
+        hora_emissao: creditNote.time,
+        subtotal: Number(creditNote.subtotal),
+        desconto_global: Number(creditNote.globalDiscount),
+        taxa_iva: Number(creditNote.taxRate),
+        valor_iva: Number(creditNote.taxAmount),
+        valor_retencao: Number(creditNote.withholdingAmount),
+        total: Number(creditNote.total),
+        moeda: creditNote.currency || 'AOA',
+        taxa_cambio: Number(creditNote.exchangeRate) || 1,
+        itens: creditNote.items,
+        status: 'Pago', // NC is usually considered finalized/paid upon issuance
+        certificado: true,
+        origem: creditNote.source || 'MANUAL',
+        caixa_id: ensureUUID(creditNote.cashRegisterId),
+        metodo_pagamento: creditNote.paymentMethod,
+        documento_origem_id: ensureUUID(original.id), // Link to original
+        local_trabalho_id: ensureUUID(creditNote.workLocationId),
+        serie_id: ensureUUID(seriesRec.id),
+        hash: ncHash,
+        operador_nome: currentUser?.name
+      };
+
+      const { error: ncError } = await supabase.from('faturas').insert(ncPayload);
+      if (ncError) throw ncError;
+
+      // If original was paid and had stock movement, we might need to reverse stock? 
+      // NC usually implies stock return if items are products.
+      // Let's assume standard behavior: NC puts stock back ENTRADA.
+      if (creditNote.items.some(i => i.productId)) {
+        const companyIdForStock = await getSecureEmpresaId();
+        for (const item of creditNote.items) {
+          if (item.productId && item.type === 'PRODUCT') {
+            await supabase.from('movimentos_stock').insert({
+              tipo: 'ENTRY', // Return to stock
+              produto_id: ensureUUID(item.productId),
+              produto_nome: item.description,
+              quantidade: item.quantity,
+              armazem_id: ensureUUID(creditNote.targetWarehouseId || ''),
+              documento_ref: creditNote.number,
+              notes: `Devolução Ref: ${creditNote.number}`,
+              empresa_id: companyIdForStock
+            });
+          }
+        }
       }
-    } catch (e) { console.error(e); }
+
+      alert(`Documento anulado com sucesso! Nota de Crédito gerada: ${ncNumber}`);
+
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro ao anular documento: " + e.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   /* Fix: Added missing handleLiquidate function with correct signature */
   const handleLiquidate = async (invoice: Invoice, amount: number, method: PaymentMethod, registerId: string, dateValue: string, docDate: string) => {
-    const seriesRec = series.find(s => s.code === 'REC') || series[0];
-    const number = `RG ${seriesRec.year}/${seriesRec.currentSequence + 1}`;
-
-    const receipt: Invoice = {
-      id: generateId(),
-      type: InvoiceType.RG,
-      seriesId: seriesRec.id,
-      number,
-      date: docDate,
-      dueDate: dateValue,
-      accountingDate: docDate,
-      clientId: invoice.clientId,
-      clientName: invoice.clientName,
-      clientNif: invoice.clientNif,
-      items: [{ id: generateId(), type: 'SERVICE', description: `Pagamento Ref: ${invoice.number}`, quantity: 1, unitPrice: amount, discount: 0, taxRate: 0, total: amount }],
-      subtotal: amount, globalDiscount: 0, taxRate: 0, taxAmount: 0, withholdingAmount: 0, retentionAmount: 0, total: amount,
-      currency: invoice.currency, exchangeRate: invoice.exchangeRate,
-      status: InvoiceStatus.PAID,
-      isCertified: true,
-      hash: generateInvoiceHash(invoice),
-      companyId: invoice.companyId,
-      workLocationId: invoice.workLocationId,
-      sourceInvoiceId: invoice.id,
-      paymentMethod: method,
-      cashRegisterId: registerId
-    };
-
-    const updatedInvoice = {
-      ...invoice,
-      paidAmount: (invoice.paidAmount || 0) + amount,
-      status: ((invoice.paidAmount || 0) + amount) >= invoice.total ? InvoiceStatus.PAID : InvoiceStatus.PARTIAL
-    };
-
-    setInvoices(prev => prev.map(i => i.id === invoice.id ? updatedInvoice : i).concat(receipt));
-
-    // Update sequences
-    const updatedSequences = { ...seriesRec.sequences, RG: (seriesRec.sequences?.RG || 0) + 1 };
-    setSeries(prev => prev.map(s => s.id === seriesRec.id ? { ...s, sequences: updatedSequences } : s));
-
-    // Sync to Cloud
     try {
+      // Get Sequence via RPC
+      const seriesRec = series.find(s => s.code === 'REC') || series[0];
+      const typePrefix = "RG";
+
+      const { data: nextSeq, error: seqError } = await supabase.rpc('get_next_sequence', {
+        p_series_id: ensureUUID(seriesRec.id),
+        p_doc_type: typePrefix
+      });
+
+      if (seqError) throw seqError;
+
+      const number = `${typePrefix} ${seriesRec.code}${seriesRec.year}/${nextSeq}`;
+
+      const receipt: Invoice = {
+        id: generateId(),
+        type: InvoiceType.RG,
+        seriesId: seriesRec.id,
+        number,
+        date: docDate,
+        dueDate: dateValue,
+        accountingDate: docDate,
+        clientId: invoice.clientId,
+        clientName: invoice.clientName,
+        clientNif: invoice.clientNif,
+        items: [{ id: generateId(), type: 'SERVICE', description: `Pagamento Ref: ${invoice.number}`, quantity: 1, unitPrice: amount, discount: 0, taxRate: 0, total: amount }],
+        subtotal: amount, globalDiscount: 0, taxRate: 0, taxAmount: 0, withholdingAmount: 0, retentionAmount: 0, total: amount,
+        currency: invoice.currency, exchangeRate: invoice.exchangeRate,
+        status: InvoiceStatus.PAID,
+        isCertified: true,
+        hash: generateInvoiceHash(invoice), // Should probably hash the receipt, not the invoice. Fixed below.
+        companyId: invoice.companyId,
+        workLocationId: invoice.workLocationId,
+        sourceInvoiceId: invoice.id,
+        paymentMethod: method,
+        cashRegisterId: registerId,
+        operatorName: currentUser?.name
+      };
+
+      // Hash fix
+      receipt.hash = generateInvoiceHash(receipt);
+
+      const updatedInvoice = {
+        ...invoice,
+        paidAmount: (invoice.paidAmount || 0) + amount,
+        status: ((invoice.paidAmount || 0) + amount) >= invoice.total ? InvoiceStatus.PAID : InvoiceStatus.PARTIAL
+      };
+
+      setInvoices(prev => prev.map(i => i.id === invoice.id ? updatedInvoice : i).concat(receipt));
+
+      // Update local sequence for UI
+      const updatedSequences = { ...seriesRec.sequences, RG: nextSeq };
+      setSeries(prev => prev.map(s => s.id === seriesRec.id ? { ...s, sequences: updatedSequences } : s));
+
+      // Sync to Cloud
       const companyId = await getSecureEmpresaId();
       await supabase.from('faturas').insert({
         id: ensureUUID(receipt.id),
         empresa_id: companyId,
         cliente_id: ensureUUID(receipt.clientId),
         cliente_nome: receipt.clientName,
+        cliente_nif: receipt.clientNif,
         numero: receipt.number,
         tipo: 'RG',
         data_emissao: receipt.date,
@@ -921,7 +1062,10 @@ const App = () => {
         certificado: true,
         documento_origem_id: ensureUUID(receipt.sourceInvoiceId),
         caixa_id: ensureUUID(receipt.cashRegisterId),
-        metodo_pagamento: receipt.paymentMethod
+        metodo_pagamento: receipt.paymentMethod,
+        operador_nome: currentUser?.name,
+        hash: receipt.hash,
+        serie_id: ensureUUID(seriesRec.id)
       });
 
       await supabase.from('faturas').update({
@@ -934,9 +1078,26 @@ const App = () => {
       if (reg) {
         const newBalance = reg.balance + amount;
         await supabase.from('caixas').update({ saldo_atual: newBalance }).eq('id', ensureUUID(registerId));
+
+        // Register Cash Movement
+        await supabase.from('movimentos_caixa').insert({
+          tipo: 'ENTRY',
+          valor: amount,
+          descricao: `Recebimento RG ${receipt.number}`,
+          caixa_id: ensureUUID(registerId),
+          documento_ref: receipt.number,
+          metodo_pagamento: method,
+          operador_nome: currentUser?.name || 'Sistema',
+          origem: 'SALES',
+          empresa_id: companyId
+        });
+
         handleUpdateCashRegister({ ...reg, balance: newBalance });
       }
-    } catch (e) { console.error(e); }
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro ao liquidar fatura: " + e.message);
+    }
   };
 
   /* Fix: Added missing handleDeletePurchase function */
@@ -1073,17 +1234,26 @@ const App = () => {
           vacations={hrVacations}
           onSaveVacation={v => setHrVacations([...hrVacations, v])}
           payroll={payrollHistory}
-          onProcessPayroll={p => {
-            setPayrollHistory([...payrollHistory, ...p]);
-            if (p.length > 0) {
+          onProcessPayroll={async (p, cashRegisterId) => {
+            // Upsert Logic: Remove existing slips for same employee/month/year before adding new ones
+            const newSlips = p;
+            setPayrollHistory(prev => {
+              const existingMap = new Map(prev.map(s => [`${s.employeeId}-${s.month}-${s.year}`, s]));
+              newSlips.forEach(s => existingMap.set(`${s.employeeId}-${s.month}-${s.year}`, s));
+              return Array.from(existingMap.values());
+            });
+
+            // Only create Transfer Order if Cash Register is provided (meaning "Transferir" was clicked)
+            if (p.length > 0 && cashRegisterId) {
               const total = p.reduce((acc, slip) => acc + slip.netTotal, 0);
               const firstSlip = p[0];
+              const orderId = generateId();
               const order: TransferOrder = {
-                id: generateId(),
+                id: orderId,
                 reference: `SAL/${firstSlip.month}/${firstSlip.year}/${new Date().getTime().toString().slice(-4)}`,
                 date: new Date().toISOString(),
-                cashRegisterId: 'AUTO',
-                cashRegisterName: 'Caixa Automático',
+                cashRegisterId: cashRegisterId,
+                cashRegisterName: cashRegisters.find(c => c.id === cashRegisterId)?.name || 'Caixa',
                 totalValue: total,
                 employeeCount: p.length,
                 month: firstSlip.month || 1,
@@ -1102,6 +1272,37 @@ const App = () => {
                 })
               };
               setTransferOrders([order, ...transferOrders]);
+
+              // Cash Out Logic
+              const reg = cashRegisters.find(c => c.id === cashRegisterId);
+              if (reg) {
+                const newBalance = reg.balance - total;
+                setCashRegisters(prev => prev.map(c => c.id === cashRegisterId ? { ...c, balance: newBalance } : c));
+                try {
+                  const uuid = ensureUUID(cashRegisterId);
+                  if (uuid) {
+                    await supabase.from('caixas').update({ saldo_atual: newBalance }).eq('id', uuid);
+                    const companyId = await getSecureEmpresaId();
+                    await supabase.from('movimentos_caixa').insert({
+                      tipo: 'EXIT',
+                      valor: total,
+                      descricao: `Pagamento Salários Ref: ${order.reference}`,
+                      caixa_id: uuid,
+                      documento_ref: order.reference,
+                      metodo_pagamento: 'CASH',
+                      operador_nome: currentUser?.name || 'Sistema',
+                      origem: 'SALARY',
+                      empresa_id: companyId
+                    });
+                  }
+                } catch (e) { console.error("Erro saida caixa salario:", e); }
+              }
+
+              setAutoOpenTransferOrderId(orderId);
+              setCurrentView('HR_TRANSFER_ORDERS');
+            } else if (p.length > 0) {
+              // Just processed, stay on page or show success?
+              // The ProcessSalary component handles its own "Processed" state UI green checkmark.
             }
           }}
           professions={professions}
@@ -1116,8 +1317,10 @@ const App = () => {
           onPrintSlip={(emp) => alert(`Imprimir recibo de ${emp.name}`)}
           cashRegisters={cashRegisters}
           onUpdateCashRegister={handleUpdateCashRegister}
+          transferOrders={transferOrders}
+          onViewTransferOrders={() => setCurrentView('HR_TRANSFER_ORDERS')}
         />;
-      case 'HR_TRANSFER_ORDERS': return <TransferOrderList orders={transferOrders} company={currentCompany} />;
+      case 'HR_TRANSFER_ORDERS': return <TransferOrderList orders={transferOrders} company={currentCompany} autoOpenId={autoOpenTransferOrderId} onDeleteOrder={id => setTransferOrders(prev => prev.filter(o => o.id !== id))} />;
       case 'HR_PERFORMANCE': return <PerformanceAnalysis logs={userActivity} employees={hrEmployees} users={users} />;
       case 'HR_CONTRACT_ISSUE':
         if (!selectedHrEmployee) return <div className="p-8 text-center text-slate-400">Seleccione um funcionário primeiro.</div>;
@@ -1127,7 +1330,7 @@ const App = () => {
 
       case 'POS_GROUP':
       case 'POS': return <POS products={products} clients={clients} invoices={invoices} series={series} cashRegisters={cashRegisters} config={posConfig} onSaveInvoice={handleSaveInvoice} onGoBack={() => setCurrentView('DASHBOARD')} currentUser={currentUser} company={currentCompany} warehouses={warehouses} workLocations={workLocations} />;
-      case 'CASH_CLOSURE': return <CashClosure registers={cashRegisters} invoices={invoices} movements={[]} onSaveClosure={c => { setCashClosures([c, ...cashClosures]); fetchCashClosuresCloud(); }} onGoBack={() => setCurrentView('DASHBOARD')} currentUser={currentUser?.name || "Admin"} currentUserId={currentUser?.id || "u1"} />;
+      case 'CASH_CLOSURE': return <CashClosure registers={cashRegisters} invoices={invoices} movements={[]} onSaveClosure={c => { setCashClosures([c, ...cashClosures]); fetchCashClosuresCloud(); }} onGoBack={() => setCurrentView('DASHBOARD')} currentUser={currentUser?.name || "Admin"} currentUserId={currentUser?.id || "u1"} companyId={currentCompany?.id} />;
       case 'CASH_CLOSURE_HISTORY': return <CashClosureHistory closures={cashClosures} />;
       case 'POS_SETTINGS': return <POSSettings config={posConfig} onSaveConfig={setPosConfig} series={series} clients={clients} />;
 
@@ -1242,40 +1445,86 @@ const App = () => {
   );
 };
 
-const TransferOrderList: React.FC<{ orders: TransferOrder[], company: Company }> = ({ orders, company }) => {
+const TransferOrderList: React.FC<{ orders: TransferOrder[], company: Company, autoOpenId?: string | null, onDeleteOrder: (id: string) => void }> = ({ orders, company, autoOpenId, onDeleteOrder }) => {
   const [selectedOrder, setSelectedOrder] = useState<TransferOrder | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    if (autoOpenId) {
+      const auto = orders.find(o => o.id === autoOpenId);
+      if (auto) setSelectedOrder(auto);
+    }
+  }, [autoOpenId, orders]);
+
+  const filteredOrders = orders.filter(o => o.reference.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const handlePrintList = () => window.print();
+
   return (
     <div className="space-y-6 animate-in fade-in h-full">
       {selectedOrder && <TransferOrderView order={selectedOrder} company={company} onClose={() => setSelectedOrder(null)} />}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
-        <h1 className="text-xl font-bold flex items-center gap-2"><ArrowRightLeft className="text-blue-600" /> Ordens de Transferência</h1>
-        <div className="text-xs text-slate-500 font-bold uppercase">Histórico de Pagamentos via Banco</div>
+
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+          <h1 className="text-xl font-bold flex items-center gap-2"><ArrowRightLeft className="text-blue-600" /> Ordens de Transferência</h1>
+          <div className="text-xs text-slate-500 font-bold uppercase">Histórico de Pagamentos via Banco</div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input
+              type="text"
+              placeholder="Pesquisar Ref..."
+              className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button onClick={handlePrintList} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold uppercase transition">
+            <Printer size={14} /> Imprimir Lista
+          </button>
+        </div>
       </div>
+
       <div className="bg-white border-2 border-slate-100 rounded-3xl overflow-hidden shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest">
             <tr>
               <th className="p-4">Referência</th>
               <th className="p-4 text-center">Data</th>
-              <th className="p-4 text-center">Funcionários</th>
+              <th className="p-4 text-center">Referente a</th>
               <th className="p-4 text-right">Montante Total</th>
               <th className="p-4 text-center">Opções</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {orders.map(o => (
+            {filteredOrders.map(o => (
               <tr key={o.id} className="hover:bg-blue-50 transition-colors">
                 <td className="p-4 font-black text-blue-600 font-mono">{o.reference}</td>
                 <td className="p-4 text-center">{formatDate(o.date)}</td>
-                <td className="p-4 text-center font-bold">{o.employeeCount} Agentes</td>
+                <td className="p-4 text-center font-bold text-slate-500 uppercase">{o.month}/{o.year}</td>
                 <td className="p-4 text-right font-black text-slate-900">{formatCurrency(o.totalValue)}</td>
                 <td className="p-4 text-center">
-                  <button onClick={() => setSelectedOrder(o)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition shadow-sm"><Eye size={18} /></button>
+                  <div className="flex items-center justify-center gap-2">
+                    <button onClick={() => setSelectedOrder(o)} title="Visualizar" className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition shadow-sm">
+                      <Eye size={16} />
+                    </button>
+                    <button onClick={() => alert("Funcionalidade de Associar Documento em desenvolvimento.")} title="Associar" className="p-2 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition shadow-sm">
+                      <Paperclip size={16} />
+                    </button>
+                    <button onClick={() => {
+                      if (confirm("Tem certeza que deseja apagar esta ordem de transferência? Isso permitirá processar novamente a transferência para este mês.")) {
+                        onDeleteOrder(o.id);
+                      }
+                    }} title="Apagar" className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition shadow-sm">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
-            {orders.length === 0 && (
-              <tr><td colSpan={5} className="p-20 text-center text-slate-400 font-black uppercase tracking-[5px] italic">Sem ordens de transferência geradas</td></tr>
+            {filteredOrders.length === 0 && (
+              <tr><td colSpan={5} className="p-20 text-center text-slate-400 font-black uppercase tracking-[5px] italic">Sem ordens de transferência encontradas</td></tr>
             )}
           </tbody>
         </table>

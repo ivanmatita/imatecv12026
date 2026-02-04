@@ -25,6 +25,7 @@ import Employees from './Employees';
 import TransferOrderModal from './TransferOrderModal';
 import ProcessSalary from './ProcessSalary';
 import SalaryProcessingModal from './SalaryProcessingModal';
+import DetailedAttendanceGrid from './DetailedAttendanceGrid';
 
 interface HumanResourcesProps {
     employees: Employee[];
@@ -34,7 +35,7 @@ interface HumanResourcesProps {
     vacations: HrVacation[];
     onSaveVacation: (v: HrVacation) => void;
     payroll: SalarySlip[];
-    onProcessPayroll: (slips: SalarySlip[]) => void;
+    onProcessPayroll: (slips: SalarySlip[], cashRegisterId?: string) => void;
     professions: Profession[];
     onSaveProfession: (p: Profession) => void;
     onDeleteProfession: (id: string) => void;
@@ -49,6 +50,8 @@ interface HumanResourcesProps {
     onUpdateCashRegister?: (cr: CashRegister) => void;
     initialTab?: 'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO' | 'SALARY_MODAL';
     onToggleSidebarTheme?: (isWhite: boolean) => void;
+    transferOrders?: TransferOrder[];
+    onViewTransferOrders?: () => void;
 }
 
 const HumanResources: React.FC<HumanResourcesProps> = ({
@@ -56,17 +59,16 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     vacations, onSaveVacation, payroll, onProcessPayroll,
     professions, onSaveProfession, onDeleteProfession,
     contracts, onSaveContract, attendance, onSaveAttendance,
-    company,
-    workLocations,
-    onPrintSlip,
-    cashRegisters = [],
+    company, workLocations, onPrintSlip, cashRegisters = [],
     onUpdateCashRegister,
-    initialTab,
-    onToggleSidebarTheme
+    initialTab = 'ASSIDUIDADE', onToggleSidebarTheme,
+    transferOrders = [], onViewTransferOrders
 }) => {
-    const [activeTab, setActiveTab] = useState<'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO'>(
-        initialTab === 'SALARY_MODAL' ? 'ASSIDUIDADE' : (initialTab || 'ASSIDUIDADE') as any
-    );
+    // Determine strict initial tab view
+    const resolvedTab = (initialTab === 'SALARY_MODAL' || !initialTab) ? 'ASSIDUIDADE' : initialTab;
+    const [activeTab, setActiveTab] = useState<'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO'>(resolvedTab);
+
+    // State initialization
     const [showProcessingModal, setShowProcessingModal] = useState(initialTab === 'SALARY_MODAL');
     const [processingState, setProcessingState] = useState<'LIST' | 'DETAILED_ATTENDANCE' | 'SALARY_RESULT'>('LIST');
     const [activeEmployee, setActiveEmployee] = useState<Employee | null>(null);
@@ -85,6 +87,11 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     const [isProcessing, setIsProcessing] = useState(false);
     const [showTaxMaps, setShowTaxMaps] = useState(false);
     const [showReceipts, setShowReceipts] = useState(false);
+
+    // New state for Detailed Grid
+    const [showDetailedGrid, setShowDetailedGrid] = useState(false);
+    const [receiptFilterIds, setReceiptFilterIds] = useState<string[]>([]);
+    const [attendanceDataMap, setAttendanceDataMap] = useState<Record<string, Record<number, DailyAttendance>>>({});
 
     const months = [
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -306,6 +313,38 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
         }
     };
 
+    const handleSaveDetailedAttendance = (employeeId: string, data: Record<number, DailyAttendance>, summary: { absences: number, extraHours: number, notes: string }) => {
+        // Save local map
+        setAttendanceDataMap(prev => ({ ...prev, [employeeId]: data }));
+
+        // Save to global attendance prop/store
+        const record: AttendanceRecord = {
+            id: generateId(),
+            employeeId,
+            month: processingMonth,
+            year: processingYear,
+            days: data
+        };
+        onSaveAttendance(record);
+
+        // Update employee status to Green (Processed)
+        const emp = employees.find(e => e.id === employeeId);
+        if (emp) {
+            // We use isMagic to denote "Processed" visually in the list for now
+            const updatedEmp = {
+                ...emp,
+                isMagic: true,
+                // Temporarily store summary stats if needed for the payroll step
+                tempAbsences: summary.absences,
+                tempExtraHours: summary.extraHours
+            };
+            onSaveEmployee(updatedEmp);
+        }
+
+        setShowDetailedGrid(false);
+        // alert("Efetividade processada com sucesso!");
+    };
+
     const onUpdateEmployeeField = (empId: string, field: keyof Employee, value: any) => {
         const emp = employees.find(e => e.id === empId);
         if (emp) {
@@ -386,41 +425,122 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
 
     const renderEffectivityList = () => {
         return (
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b">
-                        <tr>
-                            <th className="p-3 font-semibold text-slate-700">Nome</th>
-                            <th className="p-3 font-semibold text-slate-700">Profissão</th>
-                            <th className="p-3 font-semibold text-slate-700">Salário Base</th>
-                            <th className="p-3 font-semibold text-slate-700">Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                        {employees.map(emp => {
-                            const profession = professions.find(p => p.id === emp.professionId);
-                            return (
-                                <tr key={emp.id} className="hover:bg-slate-50">
-                                    <td className="p-3">{emp.name}</td>
-                                    <td className="p-3">{profession?.internalName || '---'}</td>
-                                    <td className="p-3 font-mono">{formatCurrency(profession?.baseSalary || 0)}</td>
-                                    <td className="p-3">
-                                        {emp.isMagic ? (
-                                            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">Processado</span>
-                                        ) : (
-                                            <span className="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded-full">Pendente</span>
-                                        )}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+            <div className="space-y-4">
+                {/* Month Selector for Assiduidade */}
+                <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase">Mês de Processamento</label>
+                            <select
+                                value={processingMonth}
+                                onChange={(e) => setProcessingMonth(Number(e.target.value))}
+                                className="border border-slate-300 rounded px-3 py-1.5 text-slate-700 font-bold bg-slate-50 min-w-[150px]"
+                            >
+                                {months.map((m, i) => (
+                                    <option key={i} value={i + 1}>{m}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex flex-col">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase">Ano</label>
+                            <input
+                                type="number"
+                                value={processingYear}
+                                onChange={(e) => setProcessingYear(Number(e.target.value))}
+                                className="border border-slate-300 rounded px-3 py-1.5 text-slate-700 font-bold bg-slate-50 w-24"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="text-right">
+                        <span className="text-xs text-slate-400 font-medium">Total Funcionários via Efetividade</span>
+                        <p className="text-xl font-black text-slate-800">{employees.filter(e => e.status !== 'Terminated').length}</p>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b">
+                            <tr>
+                                <th className="p-3 font-semibold text-slate-700 uppercase text-xs">Nome</th>
+                                <th className="p-3 font-semibold text-slate-700 uppercase text-xs">Profissão</th>
+                                <th className="p-3 font-semibold text-slate-700 uppercase text-xs">Categoria</th>
+                                <th className="p-3 font-semibold text-slate-700 uppercase text-xs text-right">Salário Base</th>
+                                <th className="p-3 font-semibold text-slate-700 uppercase text-xs text-center">Estado</th>
+                                <th className="p-3 font-semibold text-slate-700 uppercase text-xs text-center">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {employees.map(emp => {
+                                const profession = professions.find(p => p.id === emp.professionId);
+                                const isProcessed = emp.isMagic; // Using isMagic as "Green/Processed" flag
+
+                                return (
+                                    <tr
+                                        key={emp.id}
+                                        className={`hover:bg-slate-50 transition cursor-pointer ${isProcessed ? 'bg-green-50' : ''}`}
+                                        onClick={() => {
+                                            setActiveEmployee(emp);
+                                            setShowDetailedGrid(true);
+                                        }}
+                                    >
+                                        <td className="p-3">
+                                            <div className="font-bold text-slate-800">{emp.name}</div>
+                                            <div className="text-[10px] text-slate-500">{emp.employeeNumber || '---'}</div>
+                                        </td>
+                                        <td className="p-3">{profession?.internalName || '---'}</td>
+                                        <td className="p-3">
+                                            <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
+                                                {profession?.category || 'Geral'}
+                                            </span>
+                                        </td>
+                                        <td className="p-3 font-mono text-right font-bold text-slate-600">{formatCurrency(profession?.baseSalary || 0)}</td>
+                                        <td className="p-3 text-center">
+                                            {isProcessed ? (
+                                                <span className="text-[10px] px-3 py-1 bg-green-100 text-green-700 font-bold uppercase rounded-full border border-green-200 shadow-sm">
+                                                    Processado
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] px-3 py-1 bg-slate-100 text-slate-500 font-bold uppercase rounded-full border border-slate-200">
+                                                    Pendente
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button
+                                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
+                                                    title="Editar Efetividade"
+                                                >
+                                                    <Edit3 size={16} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         );
     };
 
     const renderContent = () => {
+        // Detailed Grid Overlay
+        if (showDetailedGrid && activeEmployee) {
+            return (
+                <DetailedAttendanceGrid
+                    employee={activeEmployee}
+                    month={processingMonth}
+                    year={processingYear}
+                    initialData={attendanceDataMap[activeEmployee.id]}
+                    onClose={() => setShowDetailedGrid(false)}
+                    onSave={handleSaveDetailedAttendance}
+                />
+            );
+        }
+
         if (processingState === 'DETAILED_ATTENDANCE') return renderAttendanceGrid();
         if (processingState === 'SALARY_RESULT' && editSlip) return (
             <SalaryMap
@@ -487,72 +607,8 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
 
 
                 {/* Table with clean design like the image */}
-                <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                    <table className="w-full text-left">
-                        <thead className="bg-slate-50 border-b">
-                            <tr>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase">Data</th>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase">User</th>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase">Profissão Interna</th>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase text-center">COD</th>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase">Consultar INSS<br /><span className="text-blue-600">Profissão Indexada</span></th>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase text-right">Salário Base</th>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase text-right">Ajudas Custo Referenciada</th>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase text-right">Vencimento Ilíquido</th>
-                                <th className="p-3 text-xs font-semibold text-slate-600 uppercase text-center">Opções</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {employees.map((emp, index) => {
-                                const profession = professions.find(p => p.id === emp.professionId);
-                                const slip = payroll.find(p => p.employeeId === emp.id && p.month === processingMonth && p.year === processingYear);
-                                return (
-                                    <tr key={emp.id} className={slip ? "bg-green-50/30 hover:bg-green-50 transition-colors" : "hover:bg-blue-50 transition-colors"}>
-                                        <td className="p-3 text-sm text-slate-700">{formatDate(emp.admissionDate)}</td>
-                                        <td className="p-3 text-sm font-semibold text-slate-800">{emp.name.split(' ')[0]}</td>
-                                        <td className="p-3 text-sm font-bold text-slate-900">{profession?.internalName || '---'}</td>
-                                        <td className="p-3 text-sm text-center font-mono text-slate-600">{index + 1}</td>
-                                        <td className="p-3 text-sm text-blue-600">{profession?.indexedName || '---'}</td>
-                                        <td className="p-3 text-sm text-right font-mono font-bold text-blue-600">
-                                            {formatCurrency(profession?.baseSalary || 0).replace('Kz', '')}
-                                        </td>
-                                        <td className="p-3 text-sm text-right font-mono font-bold">
-                                            {formatCurrency(profession?.costReference || 0).replace('Kz', '')}
-                                        </td>
-                                        <td className="p-3 text-sm text-right font-mono font-black text-slate-800">
-                                            {slip ? (
-                                                <span className="text-green-600">{formatCurrency(slip.netTotal).replace('Kz', '')}</span>
-                                            ) : (
-                                                formatCurrency((profession?.baseSalary || 0) + (profession?.costReference || 0)).replace('Kz', '')
-                                            )}
-                                        </td>
-                                        <td className="p-3 text-center">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedEmployeeForModal(emp.id);
-                                                        setShowProcessingModal(true);
-                                                        if (onToggleSidebarTheme) onToggleSidebarTheme(true);
-                                                    }}
-                                                    className="p-1.5 hover:bg-blue-100 rounded transition"
-                                                    title={slip ? "Ver Processamento" : "Executar Processamento"}
-                                                >
-                                                    {slip ? <CheckCircle size={16} className="text-green-600" /> : <Calculator size={16} className="text-blue-600" />}
-                                                </button>
-                                                <button
-                                                    className="p-1.5 hover:bg-red-100 rounded transition"
-                                                    title="Eliminar"
-                                                >
-                                                    <Trash size={16} className="text-red-400" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                {/* Render the Effectivity List with Month Selector */}
+                {renderEffectivityList()}
             </div >
         );
     };
@@ -592,11 +648,11 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                     <button
                         onClick={() => setActiveTab('ASSIDUIDADE')}
                         className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'ASSIDUIDADE'
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-blue-600 text-white shadow-md'
                             : 'bg-white text-slate-600 hover:bg-slate-100'
                             }`}
                     >
-                        Assiduidade
+                        Assiduidade dos Colaboradores
                     </button>
                     <button
                         onClick={() => setActiveTab('PROFISSÕES')}
@@ -658,12 +714,19 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                         currentMonth={processingMonth}
                         currentYear={processingYear}
                         cashRegisters={cashRegisters}
-                        onOpenProcessingModal={(empId) => {
+                        onOpenProcessingModal={(empId, data) => {
                             setSelectedEmployeeForModal(empId || null);
+                            if (data) setProcessingInitialData(data);
                             setShowProcessingModal(true);
                             if (onToggleSidebarTheme) onToggleSidebarTheme(true);
                         }}
                         onToggleSidebarTheme={onToggleSidebarTheme}
+                        onShowReceipts={(ids) => {
+                            setReceiptFilterIds(ids || []);
+                            setShowReceipts(true);
+                        }}
+                        existingTransferOrders={transferOrders}
+                        onViewTransferOrders={onViewTransferOrders}
                     />
                 )}
                 {showTaxMaps && (
@@ -685,6 +748,7 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                             setShowProcessingModal(true);
                             if (onToggleSidebarTheme) onToggleSidebarTheme(true);
                         }}
+                        filterEmployeeIds={receiptFilterIds}
                     />
                 )}
 

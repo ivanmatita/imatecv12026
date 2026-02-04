@@ -11,9 +11,10 @@ interface SalaryReceiptsModalProps {
     employees: Employee[];
     onClose: () => void;
     onGoToProcessing: () => void;
+    filterEmployeeIds?: string[];
 }
 
-const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payroll, employees, onClose, onGoToProcessing }) => {
+const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payroll, employees, onClose, onGoToProcessing, filterEmployeeIds }) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [selectedSlipId, setSelectedSlipId] = useState<string | null>(null);
@@ -32,15 +33,17 @@ const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payr
     }, [payroll, selectedMonth, selectedYear]);
 
     const filteredSlips = useMemo(() => {
-        return currentPeriodSlips.filter(slip =>
-            slip.employeeName.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [currentPeriodSlips, searchTerm]);
+        return currentPeriodSlips.filter(slip => {
+            const matchesSearch = slip.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesFilter = !filterEmployeeIds || filterEmployeeIds.length === 0 || filterEmployeeIds.includes(slip.employeeId);
+            return matchesSearch && matchesFilter;
+        });
+    }, [currentPeriodSlips, searchTerm, filterEmployeeIds]);
 
     const activeSlip = useMemo(() => {
         if (filteredSlips.length === 0) return null;
         if (!selectedSlipId) return filteredSlips[0];
-        return filteredSlips.find(s => s.id === selectedSlipId) || filteredSlips[0];
+        return filteredSlips.find(s => s.id === (selectedSlipId as any)) || filteredSlips[0];
     }, [filteredSlips, selectedSlipId]);
 
     const activeEmployee = useMemo(() => {
@@ -71,12 +74,199 @@ const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payr
         }
     };
 
-    const formattedNet = activeSlip ? roundToNearestBank(activeSlip.netTotal) : 0;
-    const daysInMonth = activeSlip ? new Date(selectedYear, selectedMonth, 0).getDate() : 30;
+    const renderReceiptContent = (slip: SalarySlip, emp: Employee, label: 'ORIGINAL' | 'DUPLICADO') => {
+        const formatVal = (v: number) => {
+            if (!v || v === 0) return '0,00';
+            return v.toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+
+        const totalVencimento = slip.baseSalary + slip.allowances - (slip.absences * (slip.baseSalary / 30));
+        const totalSubsidios = (slip.subsidyFamily || 0) + (slip.subsidyHousing || 0) + (slip.subsidyFood || 0) + (slip.subsidyTransport || 0);
+        const totalAntesImpostos = slip.grossTotal;
+
+        return (
+            <div className="bg-white p-4 h-full flex flex-col text-[11px] font-sans text-black leading-tight">
+                {/* Header Section */}
+                <div className="text-center mb-4 pt-2">
+                    <h1 className="text-[14px] font-bold tracking-widest uppercase">{company.name}</h1>
+                    <p className="font-bold">NIF: {company.nif}</p>
+                    <div className="flex justify-between items-end mt-1">
+                        <div className="w-1/3"></div>
+                        <div className="w-1/3">
+                            <p className="text-[10px] font-bold mt-1">{label}</p>
+                            <h2 className="text-[12px] font-extrabold uppercase">RECIBO DE VENCIMENTO</h2>
+                        </div>
+                        <div className="w-1/3 text-right">
+                            <p className="font-bold">{months[(slip.month || 1) - 1]} de {slip.year}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Employee Info Section */}
+                <div className="grid grid-cols-2 gap-x-12 mb-4 border-t border-black pt-2">
+                    <div>
+                        <div className="flex gap-2">
+                            <span className="font-bold">{emp.employeeNumber || emp.id.substring(0, 2)}</span>
+                            <span className="font-bold uppercase">{emp.name}</span>
+                        </div>
+                        <p className="mt-1 font-bold">Profissão: {emp.professionName || '---'}</p>
+                        <p className="font-bold mt-1 text-[9px]">[ Admitido em {emp.admissionDate ? new Date(emp.admissionDate).toLocaleDateString('pt-PT') : '---'} ]</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="font-bold">NIF Nº: {emp.nif || '---'}</p>
+                        <p className="font-bold">INSS Nº: {emp.ssn || '00000'}</p>
+                    </div>
+                </div>
+
+                {/* Table Header */}
+                <div className="flex border-b-2 border-black pb-1 mb-1 font-bold">
+                    <div className="w-[10%]">COD</div>
+                    <div className="w-[50%]">Descrição</div>
+                    <div className="w-[15%] text-center">QTD</div>
+                    <div className="w-[25%] text-right">VALOR</div>
+                </div>
+
+                {/* Table Body */}
+                <div className="flex-1 space-y-1">
+                    <div className="flex">
+                        <div className="w-[10%] text-center">01</div>
+                        <div className="w-[50%]">Vencimento Base para a Categoria Profissional</div>
+                        <div className="w-[15%] text-center">31</div>
+                        <div className="w-[25%] text-right font-medium">{formatVal(slip.baseSalary)}</div>
+                    </div>
+                    {slip.allowances > 0 && (
+                        <div className="flex">
+                            <div className="w-[10%] text-center">02</div>
+                            <div className="w-[50%]">Complemento Salarial</div>
+                            <div className="w-[15%] text-center">27</div>
+                            <div className="w-[25%] text-right font-medium">{formatVal(slip.allowances)}</div>
+                        </div>
+                    )}
+                    {slip.absences > 0 && (
+                        <div className="flex">
+                            <div className="w-[10%] text-center">04</div>
+                            <div className="w-[50%]">Abatimento de Faltas ({slip.absences})(Total Horas={slip.absences * 8}Hrs)</div>
+                            <div className="w-[15%] text-center">{slip.absences}</div>
+                            <div className="w-[25%] text-right font-medium">-{formatVal((slip.baseSalary / 30) * slip.absences)}</div>
+                        </div>
+                    )}
+
+                    {/* Total Vencimento */}
+                    <div className="flex pt-1 border-t border-gray-300">
+                        <div className="w-[10%] text-center">07</div>
+                        <div className="w-[50%] font-bold">[01+02+03-04+05-06] Total de Vencimento</div>
+                        <div className="w-[15%] text-center"></div>
+                        <div className="w-[25%] text-right font-bold border-t border-black">{formatVal(totalVencimento)}</div>
+                    </div>
+
+                    {/* Subsidies Section */}
+                    <div className="mt-4 pl-4">
+                        <p className="font-bold">Subsidios</p>
+                        <div className="flex">
+                            <div className="w-[10%] text-center pl-0">08</div>
+                            <div className="w-[50%]">Subsídio de Férias</div>
+                            <div className="w-[15%] text-center">Vg</div>
+                            <div className="w-[25%] text-right font-medium">{formatVal(0)}</div>
+                        </div>
+                        <div className="flex">
+                            <div className="w-[10%] text-center pl-0">09</div>
+                            <div className="w-[50%]">Subsídio de Natal</div>
+                            <div className="w-[15%] text-center">Vg</div>
+                            <div className="w-[25%] text-right font-medium">{formatVal(0)}</div>
+                        </div>
+                        <div className="flex">
+                            <div className="w-[10%] text-center pl-0">10</div>
+                            <div className="w-[50%]">Abono de Familia</div>
+                            <div className="w-[15%] text-center">Vg</div>
+                            <div className="w-[25%] text-right font-medium">{formatVal(slip.subsidyFamily)}</div>
+                        </div>
+                        <div className="flex">
+                            <div className="w-[10%] text-center pl-0">13</div>
+                            <div className="w-[50%]">Subsídio de Alojamento</div>
+                            <div className="w-[15%] text-center">Vg</div>
+                            <div className="w-[25%] text-right font-medium">{formatVal(slip.subsidyHousing)}</div>
+                        </div>
+                        {/* Subsídio Alimentação and Transporte should also be here as 11, 12 if needed to match the formula */}
+                        {(slip.subsidyFood > 0 || slip.subsidyTransport > 0) && (
+                            <div className="flex italic text-gray-500">
+                                <div className="w-[10%] text-center">11-12</div>
+                                <div className="w-[50%]">Subsidios (Alim./Transp.)</div>
+                                <div className="w-[15%] text-center"></div>
+                                <div className="w-[25%] text-right">{formatVal(slip.subsidyFood + slip.subsidyTransport)}</div>
+                            </div>
+                        )}
+
+                        <div className="flex pt-1 border-t border-gray-300 font-bold">
+                            <div className="w-[10%] text-center">15</div>
+                            <div className="w-[50%]">[08+09+10+11+12+13+14] Total de Subsidios</div>
+                            <div className="w-[15%] text-center"></div>
+                            <div className="w-[25%] text-right border-t border-black">{formatVal(totalSubsidios)}</div>
+                        </div>
+                    </div>
+
+                    {/* Total Antes Impostos */}
+                    <div className="flex mt-2 font-bold bg-gray-50 px-1">
+                        <div className="w-[10%] text-center">18</div>
+                        <div className="w-[50%]">[07+15+16-17] Total de Vencimento Antes de Impostos</div>
+                        <div className="w-[15%] text-center"></div>
+                        <div className="w-[25%] text-right">{formatVal(totalAntesImpostos)}</div>
+                    </div>
+
+                    {/* Taxes Section */}
+                    <div className="mt-2">
+                        <p className="font-bold">Impostos</p>
+                        <div className="flex">
+                            <div className="w-[10%] text-center">19</div>
+                            <div className="w-[50%]">Segurança Social do Trabalhador [18-08]x3%</div>
+                            <div className="w-[15%] text-center"></div>
+                            <div className="w-[25%] text-right font-medium">{formatVal(slip.inss)}</div>
+                        </div>
+                        <div className="flex">
+                            <div className="w-[10%] text-center">20</div>
+                            <div className="w-[50%] uppercase tracking-tighter">IRT [07+[11]&gt;30.000+[12]&gt;30.000+[13]50%+10+16-17-19]</div>
+                            <div className="w-[15%] text-center"></div>
+                            <div className="w-[25%] text-right font-medium">{formatVal(slip.irt)}</div>
+                        </div>
+                        <div className="flex pt-1 mt-1 border-t border-black font-bold">
+                            <div className="w-[10%] text-center">21</div>
+                            <div className="w-[50%]">Vencimento liquido depois de impostos [18-19-20]</div>
+                            <div className="w-[15%] text-center"></div>
+                            <div className="w-[25%] text-right">{formatVal(slip.netTotal)}</div>
+                        </div>
+                    </div>
+
+                    {/* Vencimento Liquido Final Row */}
+                    <div className="flex mt-4 font-black text-[12px]">
+                        <div className="w-[10%] text-center">22</div>
+                        <div className="w-[50%]">VENCIMENTO LIQUIDO</div>
+                        <div className="w-[15%] text-center"></div>
+                        <div className="w-[25%] text-right border-t border-black pt-1">{formatVal(slip.netTotal)}</div>
+                    </div>
+                </div>
+
+                {/* Footer Section */}
+                <div className="mt-auto pt-4">
+                    <div className="border-t border-black border-dashed pt-4 flex justify-between items-center font-black text-[12px]">
+                        <div className="flex gap-4">
+                            <span>24</span>
+                            <span className="uppercase tracking-widest">TOTAL A RECEBER [22-23]</span>
+                        </div>
+                        <div className="w-[25%] text-right border-y-2 border-slate-300 py-1">
+                            {formatVal(slip.netTotal)}
+                        </div>
+                    </div>
+
+                    <div className="mt-12 flex justify-start">
+                        <p className="font-bold">Recebi: __________________________________________________</p>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="fixed inset-0 z-[150] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-0 md:p-2 animate-in fade-in duration-300">
-            <div className="bg-white w-full max-w-[98vw] h-full md:h-[98vh] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 origin-top transform scale-100">
+            <div className="bg-white w-full max-w-[98vw] h-full md:h-[98vh] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 origin-top transform scale-100 print:hidden">
 
                 {/* Header Toolbar */}
                 <div className="flex flex-col md:flex-row justify-between items-center px-4 py-3 border-b border-slate-200 bg-white shrink-0 print:hidden gap-4">
@@ -128,7 +318,7 @@ const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payr
                 <div className="flex flex-col md:flex-row flex-1 overflow-hidden bg-slate-100">
 
                     {/* Sidebar Employee List */}
-                    <div className="w-full md:w-80 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col print:hidden shadow-inner h-1/3 md:h-auto">
+                    <div className="w-full md:w-80 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col print:hidden shadow-inner h-1/3 md:h-auto shrink-0">
                         <div className="p-4 bg-slate-50/50">
                             <div className="relative group">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-purple-600 transition-colors" size={16} />
@@ -146,8 +336,8 @@ const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payr
                             {filteredSlips.length > 0 ? (
                                 filteredSlips.map(slip => (
                                     <button
-                                        key={slip.id}
-                                        onClick={() => setSelectedSlipId(slip.id)}
+                                        key={slip.id || slip.employeeId}
+                                        onClick={() => setSelectedSlipId((slip as any).id)}
                                         className={`w-full text-left p-4 border-b border-slate-50 transition-all flex items-center gap-3 md:gap-4 group ${(selectedSlipId === slip.id || (!selectedSlipId && activeSlip?.id === slip.id))
                                             ? 'bg-purple-50 border-l-4 border-l-purple-600'
                                             : 'hover:bg-slate-50 text-slate-600'
@@ -186,172 +376,34 @@ const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payr
                     </div>
 
                     {/* Receipt Preview Area */}
-                    <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center bg-slate-200/80">
+                    <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center bg-slate-300">
                         {activeSlip && activeEmployee ? (
                             <div className="w-full flex flex-col items-center">
                                 {/* Actions */}
                                 <div className="flex gap-2 md:gap-4 mb-6 print:hidden w-full max-w-[210mm] justify-end">
                                     <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition shadow-lg">
-                                        <Printer size={14} /> <span className="hidden sm:inline">Imprimir</span>
+                                        <Printer size={14} /> <span className="hidden sm:inline">Imprimir Duplicado</span>
                                     </button>
                                     <button onClick={handleDownloadPDF} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition shadow-lg">
                                         <Download size={14} /> <span className="hidden sm:inline">Baixar PDF</span>
                                     </button>
                                 </div>
 
-                                {/* Actual Receipt - A4/A5 mimic */}
-                                <div id="receipt-content-area" className="bg-white shadow-xl w-full max-w-[210mm] min-h-[148mm] mx-auto print:shadow-none print:w-full print:m-0 print:border-none p-8 md:p-12 relative flex flex-col border border-slate-300">
+                                {/* DUPLICATE SIDE BY SIDE PREVIEW */}
+                                <div id="receipt-content-area" className="flex flex-row w-full max-w-[297mm] h-[148mm] bg-white shadow-2xl print:shadow-none p-0 relative overflow-hidden">
+                                    {/* Vertical Dash Line */}
+                                    <div className="absolute left-1/2 top-4 bottom-4 border-l border-dashed border-slate-300 z-10"></div>
 
-                                    {/* Receipt Header */}
-                                    <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-6">
-                                        <div className="flex gap-4">
-                                            <div className="h-16 w-16 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200">
-                                                <Building2 className="text-slate-300" size={32} />
-                                            </div>
-                                            <div>
-                                                <h1 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tight leading-none mb-1">{company.name}</h1>
-                                                <p className="text-xs text-slate-500 font-medium max-w-[250px]">{company.address || 'Endereço da Empresa'}</p>
-                                                <p className="text-xs text-slate-500 font-medium mt-1">NIF: {company.nif || '000000000'}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <h2 className="text-lg font-black text-slate-400 uppercase tracking-[0.2em]">RECIBO DE VENCIMENTO</h2>
-                                            <p className="text-sm font-bold text-slate-900 mt-2 uppercase">{months[selectedMonth - 1]} / {selectedYear}</p>
-                                            <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">Período de Processamento</p>
-                                        </div>
+                                    <div className="w-1/2 border-r border-slate-100 p-2">
+                                        {renderReceiptContent(activeSlip, activeEmployee, 'ORIGINAL')}
                                     </div>
-
-                                    {/* Employee Info */}
-                                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Funcionário</p>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-mono bg-white px-1.5 py-0.5 border rounded text-xs text-slate-500">{activeEmployee.id.replace(/\D/g, '').substring(0, 3)}</span>
-                                                <p className="text-base font-black text-slate-800 uppercase">{activeEmployee.name}</p>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Categoria / Função</p>
-                                                <p className="text-xs font-bold text-slate-700 uppercase">{activeEmployee.professionName || 'Geral'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dias Proc.</p>
-                                                <p className="text-xs font-bold text-slate-700 uppercase">{daysInMonth} dias</p>
-                                            </div>
-                                        </div>
+                                    <div className="w-1/2 p-2">
+                                        {renderReceiptContent(activeSlip, activeEmployee, 'DUPLICADO')}
                                     </div>
+                                </div>
 
-                                    {/* Table Content */}
-                                    <div className="flex-1">
-                                        <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="border-b-2 border-slate-200 text-left">
-                                                    <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider w-16">Cód</th>
-                                                    <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">Descrição dos Abonos e Descontos</th>
-                                                    <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right w-24">Abonos</th>
-                                                    <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right w-24">Descontos</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100 divide-dashed">
-                                                {/* Earnings */}
-                                                <tr className="group hover:bg-slate-50">
-                                                    <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">01</td>
-                                                    <td className="py-2 pl-2 font-medium text-slate-700">Vencimento Base</td>
-                                                    <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(activeSlip.baseSalary).replace('Kz', '')}</td>
-                                                    <td className="py-2 text-right text-slate-300">---</td>
-                                                </tr>
-
-                                                {activeSlip.allowances > 0 && (
-                                                    <tr className="group hover:bg-slate-50">
-                                                        <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">02</td>
-                                                        <td className="py-2 pl-2 font-medium text-slate-700">Complementos / Outros Abonos</td>
-                                                        <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(activeSlip.allowances).replace('Kz', '')}</td>
-                                                        <td className="py-2 text-right text-slate-300">---</td>
-                                                    </tr>
-                                                )}
-
-                                                <tr className="group hover:bg-slate-50">
-                                                    <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">S1</td>
-                                                    <td className="py-2 pl-2 font-medium text-slate-700">Subsídio de Alimentação</td>
-                                                    <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(activeSlip.subsidyFood || 0).replace('Kz', '')}</td>
-                                                    <td className="py-2 text-right text-slate-300">---</td>
-                                                </tr>
-
-                                                <tr className="group hover:bg-slate-50">
-                                                    <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">S2</td>
-                                                    <td className="py-2 pl-2 font-medium text-slate-700">Subsídio de Transporte</td>
-                                                    <td className="py-2 text-right font-bold text-slate-800">{formatCurrency(activeSlip.subsidyTransport || 0).replace('Kz', '')}</td>
-                                                    <td className="py-2 text-right text-slate-300">---</td>
-                                                </tr>
-
-                                                {/* Deductions */}
-                                                {activeSlip.absences > 0 && (
-                                                    <tr className="group hover:bg-slate-50">
-                                                        <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">D1</td>
-                                                        <td className="py-2 pl-2 font-medium text-slate-700">Faltas Injustificadas ({activeSlip.absences} dias)</td>
-                                                        <td className="py-2 text-right text-slate-300">---</td>
-                                                        <td className="py-2 text-right font-bold text-red-600">
-                                                            -{formatCurrency((activeSlip.baseSalary / 30) * activeSlip.absences).replace('Kz', '')}
-                                                        </td>
-                                                    </tr>
-                                                )}
-
-                                                <tr className="group hover:bg-slate-50">
-                                                    <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">D2</td>
-                                                    <td className="py-2 pl-2 font-medium text-slate-700">Segurança Social (INSS 3%)</td>
-                                                    <td className="py-2 text-right text-slate-300">---</td>
-                                                    <td className="py-2 text-right font-bold text-red-600">-{formatCurrency(activeSlip.inss).replace('Kz', '')}</td>
-                                                </tr>
-
-                                                <tr className="group hover:bg-slate-50">
-                                                    <td className="py-2 text-xs font-bold text-slate-400 text-center bg-slate-50/50">D3</td>
-                                                    <td className="py-2 pl-2 font-medium text-slate-700">Imposto sobre Rendimento (IRT)</td>
-                                                    <td className="py-2 text-right text-slate-300">---</td>
-                                                    <td className="py-2 text-right font-bold text-red-600">-{formatCurrency(activeSlip.irt).replace('Kz', '')}</td>
-                                                </tr>
-                                            </tbody>
-                                            <tfoot>
-                                                <tr className="border-t-2 border-slate-900">
-                                                    <td colSpan={2} className="pt-4 text-right pr-4 text-xs font-black uppercase text-slate-500 tracking-wider">Totais</td>
-                                                    <td className="pt-4 text-right font-black text-slate-800 bg-slate-50 rounded-l-lg py-2">
-                                                        {formatCurrency(activeSlip.grossSalary + activeSlip.subsidyFood + activeSlip.subsidyTransport).replace('Kz', '')}
-                                                    </td>
-                                                    <td className="pt-4 text-right font-black text-red-600 bg-slate-50 rounded-r-lg py-2">
-                                                        -{formatCurrency(activeSlip.irt + activeSlip.inss + ((activeSlip.baseSalary / 30) * activeSlip.absences)).replace('Kz', '')}
-                                                    </td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                    </div>
-
-                                    {/* Net Pay Highlight */}
-                                    <div className="mt-8 bg-slate-900 text-white p-6 rounded-xl flex justify-between items-center shadow-lg">
-                                        <div>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Líquido a Receber</p>
-                                            <p className="text-xs text-slate-500 font-medium">Transferência ou Numerário</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-3xl font-black tracking-tight">{formatCurrency(formattedNet)}</p>
-                                        </div>
-                                    </div>
-
-                                    {/* Footer Signatures */}
-                                    <div className="mt-12 pt-8 border-t border-slate-200 grid grid-cols-2 gap-12">
-                                        <div className="text-center">
-                                            <div className="h-0.5 w-2/3 bg-slate-300 mx-auto mb-2"></div>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">A Entidade Patronal</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <div className="h-0.5 w-2/3 bg-slate-300 mx-auto mb-2"></div>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">O Colaborador</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-8 text-center">
-                                        <p className="text-[9px] text-slate-300 font-bold uppercase tracking-[0.2em]">Processado por Imatec Software System</p>
-                                    </div>
-
+                                <div className="mt-8 text-slate-500 text-[10px] font-black uppercase tracking-widest text-center print:hidden">
+                                    Recibo Gerado para Impressão em A4 (Horizontal/Lado a Lado)
                                 </div>
                             </div>
                         ) : (
@@ -362,6 +414,29 @@ const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payr
                         )}
                     </div>
                 </div>
+            </div>
+
+            {/* Hidden Print Area - CSS forces this to fill the page */}
+            <style dangerouslySetInnerHTML={{
+                __html: `
+                @media print {
+                    @page { size: landscape; margin: 0; }
+                    body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+                    .no-print { display: none !important; }
+                    #receipt-content-area { width: 100% !important; max-width: none !important; border: none !important; box-shadow: none !important; margin: 0 !important; }
+                }
+            ` }} />
+            <div className="hidden print:block absolute top-0 left-0 w-full h-full bg-white z-[500]">
+                {activeSlip && activeEmployee && (
+                    <div className="flex flex-row w-full h-full items-stretch justify-center p-0">
+                        <div className="w-1/2 p-2 border-r border-dashed border-black">
+                            {renderReceiptContent(activeSlip, activeEmployee, 'ORIGINAL')}
+                        </div>
+                        <div className="w-1/2 p-2">
+                            {renderReceiptContent(activeSlip, activeEmployee, 'DUPLICADO')}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

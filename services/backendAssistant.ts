@@ -28,9 +28,19 @@ const EMPRESA_ID = '00000000-0000-0000-0000-000000000001';
 // ============================================
 // HELPER: Garantir UUID válido
 // ============================================
+// ============================================
+// HELPER: Garantir UUID válido ou NULL
+// ============================================
 function ensureUUID(id: string | undefined): string {
     if (!id || id.length < 36) {
-        return EMPRESA_ID;
+        return EMPRESA_ID; // Fallback for mandatory company_id
+    }
+    return id;
+}
+
+function ensureOptionalUUID(id: string | undefined): string | null {
+    if (!id || id.length < 36) {
+        return null;
     }
     return id;
 }
@@ -71,20 +81,23 @@ export const InvoiceBackend = {
      */
     async save(invoice: any): Promise<BackendResponse> {
         try {
+            // Ensure ID is valid or generate a new one if it's a temp/mock ID
+            const validId = (invoice.id && invoice.id.length >= 36) ? invoice.id : crypto.randomUUID();
+
             const invoiceData = {
-                id: ensureUUID(invoice.id),
+                id: validId,
                 empresa_id: EMPRESA_ID,
-                serie_id: ensureUUID(invoice.seriesId),
-                codigo_serie: invoice.seriesCode,
+                serie_id: ensureOptionalUUID(invoice.seriesId),
+                codigo_serie: invoice.seriesCode || 'MANUAL',
                 numero: invoice.number,
                 tipo: invoice.type,
                 data_emissao: invoice.date,
-                hora_emissao: invoice.time,
+                hora_emissao: invoice.time || new Date().toLocaleTimeString(),
                 data_vencimento: invoice.dueDate,
-                data_contabilistica: invoice.accountingDate,
-                cliente_id: ensureUUID(invoice.clientId),
-                cliente_nome: invoice.clientName,
-                cliente_nif: invoice.clientNif,
+                data_contabilistica: invoice.accountingDate || invoice.date,
+                cliente_id: ensureOptionalUUID(invoice.clientId),
+                cliente_nome: invoice.clientName || 'Cliente Final',
+                cliente_nif: invoice.clientNif || '999999999',
                 cliente_endereco: invoice.clientAddress,
                 cliente_email: invoice.clientEmail,
                 cliente_telefone: invoice.clientPhone,
@@ -106,21 +119,21 @@ export const InvoiceBackend = {
                 hash_anterior: invoice.previousHash,
                 qr_code: invoice.qrCode,
                 metodo_pagamento: invoice.paymentMethod,
-                caixa_id: ensureUUID(invoice.cashRegisterId),
-                local_trabalho_id: ensureUUID(invoice.workLocationId),
-                armazem_destino_id: ensureUUID(invoice.warehouseId),
+                caixa_id: ensureOptionalUUID(invoice.cashRegisterId),
+                local_trabalho_id: ensureOptionalUUID(invoice.workLocationId),
+                armazem_destino_id: ensureOptionalUUID(invoice.warehouseId),
                 operador_nome: invoice.operatorName,
-                tipologia: invoice.typology,
+                tipologia: invoice.typology || 'Geral',
                 origem: invoice.source || 'MANUAL',
                 anexo: invoice.attachment,
-                documento_origem_id: ensureUUID(invoice.sourceInvoiceId),
+                documento_origem_id: ensureOptionalUUID(invoice.sourceInvoiceId),
                 motivo_anulacao: invoice.cancellationReason,
                 status_integracao: invoice.integrationStatus,
                 processado_em: invoice.processedAt,
                 observacoes: invoice.notes,
                 notas_internas: invoice.internalNotes,
-                itens: JSON.stringify(invoice.items || []),
-                created_by: ensureUUID(invoice.createdBy),
+                itens: invoice.items, // Pass as JSONB directly, Supabase client handles it if column is jsonb
+                created_by: ensureOptionalUUID(invoice.createdBy),
                 updated_at: new Date().toISOString()
             };
 
@@ -406,7 +419,21 @@ export const SeriesBackend = {
                 ? JSON.parse(series.sequencias)
                 : series.sequencias || {};
 
-            const currentSeq = sequences[docType] || series.sequencia_atual || 1;
+            // If specific type sequence exists, use it.
+            // If NOT, we start fresh at 0 (so next is 1), unless it's the main type matching currentSequence?
+            // Safer approach: If key exists, use it. If not, start at 0.
+            // Exception: Legacy support for the 'main' type might rely on sequencia_atual.
+
+            let currentSeq = 0;
+            if (sequences[docType] !== undefined) {
+                currentSeq = sequences[docType];
+            } else if (docType === series.tipo) {
+                // If the doc type matches the series main type (e.g. NORMAL series for FT), maybe use legacy field
+                currentSeq = series.sequencia_atual || 0;
+            } else {
+                currentSeq = 0;
+            }
+
             const nextSeq = currentSeq + 1;
 
             // Atualizar sequência
@@ -416,7 +443,10 @@ export const SeriesBackend = {
                 .from('series')
                 .update({
                     sequencias: JSON.stringify(sequences),
-                    sequencia_atual: nextSeq
+                    // Only update legacy field if it's the main type, or keep it as a 'latest' indicator?
+                    // Let's keep it as max or just ignore it for new types.
+                    // Ideally, we sync it if it matches main type. For now, let's just update valid sequences json.
+                    sequencia_atual: (docType === series.tipo) ? nextSeq : series.sequencia_atual
                 })
                 .eq('id', seriesId);
 
@@ -622,10 +652,91 @@ export const WarehouseBackend = {
     }
 };
 
-export default {
-    Invoice: InvoiceBackend,
-    Purchase: PurchaseBackend,
-    Series: SeriesBackend,
-    CashRegister: CashRegisterBackend,
-    Warehouse: WarehouseBackend
+const BackendAssistant = {
+    vendas: {
+        listar: InvoiceBackend.fetchAll,
+        criar: InvoiceBackend.save,
+        atualizar: (_id: string, data: any) => InvoiceBackend.save(data),
+        excluir: InvoiceBackend.delete
+    },
+    compras: {
+        listar: PurchaseBackend.fetchAll,
+        criar: PurchaseBackend.save,
+        atualizar: (_id: string, data: any) => PurchaseBackend.save(data),
+        excluir: PurchaseBackend.delete
+    },
+    series: {
+        listar: SeriesBackend.fetchAll,
+        criar: SeriesBackend.save,
+        atualizar: (_id: string, data: any) => SeriesBackend.save(data),
+        excluir: SeriesBackend.delete,
+        proximoNumero: SeriesBackend.getNextNumber
+    },
+    caixas: {
+        listar: CashRegisterBackend.fetchAll,
+        criar: async (c: any) => ({ success: false, message: 'Criação via backend não implementada' }),
+        atualizar: CashRegisterBackend.updateBalance,
+        excluir: async (id: string) => ({ success: true }), // Mock
+        registrarMovimento: CashRegisterBackend.registerMovement
+    },
+    armazens: {
+        listar: WarehouseBackend.fetchAll,
+        criar: WarehouseBackend.save,
+        atualizar: (_id: string, data: any) => WarehouseBackend.save(data),
+        excluir: async (id: string) => ({ success: true })
+    },
+    // Mock other services to prevent crashes
+    clientes: {
+        listar: async () => {
+            const { data } = await supabase.from('clientes').select('*');
+            return data || [];
+        },
+        criar: async (d: any) => supabase.from('clientes').insert(d).select().single(),
+        atualizar: async (id: string, d: any) => supabase.from('clientes').update(d).eq('id', id).select().single(),
+        excluir: async (id: string) => supabase.from('clientes').delete().eq('id', id)
+    },
+    fornecedores: {
+        listar: async () => {
+            const { data } = await supabase.from('fornecedores').select('*');
+            return data || [];
+        },
+        criar: async (d: any) => supabase.from('fornecedores').insert(d).select().single(),
+        atualizar: async (id: string, d: any) => supabase.from('fornecedores').update(d).eq('id', id).select().single(),
+        excluir: async (id: string) => supabase.from('fornecedores').delete().eq('id', id)
+    },
+    utilizadores: {
+        listar: async () => {
+            const { data } = await supabase.from('utilizadores').select('*');
+            return data || [];
+        },
+        criar: async (d: any) => ({ data: d }),
+        atualizar: async (id: string, d: any) => ({ data: d }),
+        excluir: async (id: string) => ({})
+    },
+    metricas: {
+        listar: async () => {
+            const { data } = await supabase.from('metricas').select('*');
+            return data || [];
+        },
+        criar: async (d: any) => ({}),
+        atualizar: async (id: string, d: any) => ({}),
+        excluir: async (id: string) => ({})
+    },
+    produtos: {
+        listar: async () => {
+            const { data } = await supabase.from('produtos').select('*');
+            return data || [];
+        },
+        criar: async (d: any) => supabase.from('produtos').insert(d).select().single(),
+        atualizar: async (id: string, d: any) => supabase.from('produtos').update(d).eq('id', id).select().single(),
+        excluir: async (id: string) => supabase.from('produtos').delete().eq('id', id)
+    },
+    testarConexao: async () => {
+        const { error } = await supabase.from('empresas').select('count').single();
+        return !error;
+    },
+    setEmpresaAtiva: (id: string) => console.log("Empresa ativa:", id)
 };
+
+export { BackendAssistant };
+export default BackendAssistant;

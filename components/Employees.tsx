@@ -1467,14 +1467,14 @@ const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLo
                                         <div className="relative">
                                             <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full bg-red-500"></span><label className="text-[10px] font-bold text-slate-800">Data de Emissão</label></div>
                                             <div className="w-full border border-slate-400 rounded-2xl flex items-center p-1">
-                                                <input type="text" placeholder="dd/mm/aaaa" className="bg-transparent w-full text-xl text-slate-500 font-medium outline-none px-2" value={formData.issueDate || ''} onChange={e => setFormData({ ...formData, issueDate: e.target.value })} />
+                                                <input type="date" className="bg-transparent w-full text-xl text-slate-500 font-medium outline-none px-2" value={formData.issueDate || ''} onChange={e => setFormData({ ...formData, issueDate: e.target.value })} />
                                                 <Calendar className="mr-2" />
                                             </div>
                                         </div>
                                         <div className="relative">
                                             <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full bg-red-500"></span><label className="text-[10px] font-bold text-slate-800">Data de Validade</label></div>
                                             <div className="w-full border border-slate-400 rounded-2xl flex items-center p-1">
-                                                <input type="text" placeholder="dd/mm/aaaa" className="bg-transparent w-full text-xl text-slate-500 font-medium outline-none px-2" value={formData.expiryDate || ''} onChange={e => setFormData({ ...formData, expiryDate: e.target.value })} />
+                                                <input type="date" className="bg-transparent w-full text-xl text-slate-500 font-medium outline-none px-2" value={formData.expiryDate || ''} onChange={e => setFormData({ ...formData, expiryDate: e.target.value })} />
                                                 <Calendar className="mr-2" />
                                             </div>
                                         </div>
@@ -1490,7 +1490,7 @@ const Employees: React.FC<EmployeesProps> = ({ employees, onSaveEmployee, workLo
                                         <div className="relative">
                                             <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full bg-red-500"></span><label className="text-[10px] font-bold text-slate-800">Data de nascimento</label></div>
                                             <div className="w-full border border-slate-400 rounded-2xl flex items-center p-1">
-                                                <input type="text" placeholder="dd/mm/aaaa" className="bg-transparent w-full text-xl text-slate-500 font-medium outline-none px-2" value={formData.birthDate || ''} onChange={e => setFormData({ ...formData, birthDate: e.target.value })} />
+                                                <input type="date" className="bg-transparent w-full text-xl text-slate-500 font-medium outline-none px-2" value={formData.birthDate || ''} onChange={e => setFormData({ ...formData, birthDate: e.target.value })} />
                                                 <Calendar className="mr-2" />
                                             </div>
                                         </div>
