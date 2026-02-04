@@ -458,19 +458,19 @@ const App: React.FC = () => {
 
             if (docSeries) {
                 try {
-                     // Get Sequential Number for NC
+                    // Get Sequential Number for NC
                     const nextNumRes = await import('./services/backendAssistant').then(m => m.BackendAssistant.series.proximoNumero(seriesId, InvoiceType.NC));
-                    
+
                     if (nextNumRes.success && nextNumRes.data) {
                         const number = nextNumRes.data.number;
-                        
+
                         newNC = {
                             ...original,
                             id: generateId(),
                             type: InvoiceType.NC,
                             number,
                             date: new Date().toISOString().split('T')[0],
-                            time: new Date().toLocaleTimeString('pt-PT', {hour: '2-digit', minute:'2-digit'}),
+                            time: new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
                             status: InvoiceStatus.PAID, // NC is final
                             sourceInvoiceId: original.id,
                             notes: `Estorno referente a anulação do documento ${original.number}. Motivo: ${reason}`,
