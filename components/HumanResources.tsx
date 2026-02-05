@@ -18,14 +18,18 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import SalaryMap from './SalaryMap';
-import TaxMaps from './TaxMaps';
+import SalaryMapIRTINSS from './SalaryMapIRTINSS';
 import SalaryReceiptsModal from './SalaryReceiptsModal';
 import ProfessionManager from './ProfessionManager';
 import Employees from './Employees';
 import TransferOrderModal from './TransferOrderModal';
 import ProcessSalary from './ProcessSalary';
-import SalaryProcessingModal from './SalaryProcessingModal';
+
 import DetailedAttendanceGrid from './DetailedAttendanceGrid';
+import {
+    saveSalarySlip, getSalarySlips, saveAttendance, getAttendance,
+    saveTransferOrder, getTransferOrders
+} from '../services/payrollService';
 
 interface HumanResourcesProps {
     employees: Employee[];
@@ -48,8 +52,9 @@ interface HumanResourcesProps {
     onPrintSlip?: (emp: Employee) => void;
     cashRegisters?: CashRegister[];
     onUpdateCashRegister?: (cr: CashRegister) => void;
-    initialTab?: 'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO' | 'SALARY_MODAL';
+    initialTab?: 'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO';
     onToggleSidebarTheme?: (isWhite: boolean) => void;
+    onToggleSidebar?: (isOpen: boolean) => void;
     transferOrders?: TransferOrder[];
     onViewTransferOrders?: () => void;
 }
@@ -62,14 +67,15 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     company, workLocations, onPrintSlip, cashRegisters = [],
     onUpdateCashRegister,
     initialTab = 'ASSIDUIDADE', onToggleSidebarTheme,
+    onToggleSidebar,
     transferOrders = [], onViewTransferOrders
 }) => {
     // Determine strict initial tab view
-    const resolvedTab = (initialTab === 'SALARY_MODAL' || !initialTab) ? 'ASSIDUIDADE' : initialTab;
+    const resolvedTab = (!initialTab) ? 'ASSIDUIDADE' : initialTab;
     const [activeTab, setActiveTab] = useState<'ASSIDUIDADE' | 'PROFISSÕES' | 'COLABORADORES' | 'PROCESSAMENTO'>(resolvedTab);
 
     // State initialization
-    const [showProcessingModal, setShowProcessingModal] = useState(initialTab === 'SALARY_MODAL');
+    const [showProcessingModal, setShowProcessingModal] = useState(false);
     const [processingState, setProcessingState] = useState<'LIST' | 'DETAILED_ATTENDANCE' | 'SALARY_RESULT'>('LIST');
     const [activeEmployee, setActiveEmployee] = useState<Employee | null>(null);
     const [currentAttendance, setCurrentAttendance] = useState<Record<number, DailyAttendance>>({});
@@ -85,13 +91,64 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     const [processingMonth, setProcessingMonth] = useState(new Date().getMonth() + 1);
     const [processingYear, setProcessingYear] = useState(new Date().getFullYear());
     const [isProcessing, setIsProcessing] = useState(false);
-    const [showTaxMaps, setShowTaxMaps] = useState(false);
     const [showReceipts, setShowReceipts] = useState(false);
+    const [showGeneralSalaryMap, setShowGeneralSalaryMap] = useState(false);
+
+    // Transfer Order View State
+    const [transferOrderParams, setTransferOrderParams] = useState<{ month?: number, year?: number, viewMode?: 'LIST' | 'DETAIL' }>({});
 
     // New state for Detailed Grid
     const [showDetailedGrid, setShowDetailedGrid] = useState(false);
     const [receiptFilterIds, setReceiptFilterIds] = useState<string[]>([]);
     const [attendanceDataMap, setAttendanceDataMap] = useState<Record<string, Record<number, DailyAttendance>>>({});
+
+    // Local state for Supabase data
+    const [remotePayroll, setRemotePayroll] = useState<SalarySlip[]>([]);
+    const [remoteAttendance, setRemoteAttendance] = useState<AttendanceRecord[]>([]);
+    const [remoteTransferOrders, setRemoteTransferOrders] = useState<TransferOrder[]>([]);
+
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                const [slips, atts, orders] = await Promise.all([
+                    getSalarySlips(),
+                    getAttendance(processingMonth, processingYear),
+                    getTransferOrders()
+                ]);
+                setRemotePayroll(slips);
+                setRemoteAttendance(atts);
+                setRemoteTransferOrders(orders);
+            } catch (error) {
+                console.error("Error loading payroll data:", error);
+
+                // Check if error is related to missing tables (404)
+                if (typeof error === 'object' && error !== null && 'code' in error && (error as any).code === '404') {
+                    // Optionally show a specific toast/alert about DB not initialized
+                    // console.warn("Supabase tables likely missing. Please run schema.");
+                }
+            }
+        };
+        loadData();
+    }, [processingMonth, processingYear]);
+
+    // Merge props with remote data for display
+    const displayPayroll = useMemo(() => {
+        // Prefer remote data if available, or merge. For now, simple concatenation or override
+        // We defer to remotePayroll if it has data, otherwise use prop
+        return remotePayroll.length > 0 ? remotePayroll : payroll;
+    }, [payroll, remotePayroll]);
+
+    // Similar merge for attendance if needed
+    // We update local attendance map from remote
+    useEffect(() => {
+        if (remoteAttendance.length > 0) {
+            const newMap: Record<string, Record<number, DailyAttendance>> = {};
+            remoteAttendance.forEach(a => {
+                newMap[a.employeeId] = a.days;
+            });
+            setAttendanceDataMap(prev => ({ ...prev, ...newMap }));
+        }
+    }, [remoteAttendance]);
 
     const months = [
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -211,10 +268,16 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
 
         setIsProcessing(true);
         try {
+            // Save to Supabase
+            await saveSalarySlip(finalSlip);
+
+            // Update local remote state to reflect change immediately
+            setRemotePayroll(prev => [...prev.filter(s => s.employeeId !== finalSlip.employeeId || s.month !== finalSlip.month || s.year !== finalSlip.year), finalSlip]);
+
             onProcessPayroll([finalSlip]);
 
             const updatedEmp = { ...activeEmployee, isMagic: true };
-            onSaveEmployee(updatedEmp);
+            onSaveEmployee(updatedEmp); // This should ideally also save to Supabase via Employee service in App or here
 
             if (selectedCashRegisterId && onUpdateCashRegister) {
                 const cashReg = cashRegisters.find(c => c.id === selectedCashRegisterId);
@@ -235,6 +298,25 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
             alert('Erro ao processar: ' + (err as Error).message);
         } finally {
             setIsProcessing(false);
+        }
+    };
+
+    const handleProcessSalaryCallback = async (slips: SalarySlip[]) => {
+        try {
+            // Save to Supabase
+            await Promise.all(slips.map(s => saveSalarySlip(s)));
+
+            // Update local remote state
+            setRemotePayroll(prev => {
+                const newIds = new Set(slips.map(s => `${s.employeeId}-${s.month}-${s.year}`));
+                return [...prev.filter(s => !newIds.has(`${s.employeeId}-${s.month}-${s.year}`)), ...slips];
+            });
+
+            // Call parent prop
+            onProcessPayroll(slips);
+        } catch (error) {
+            console.error("Error saving payroll:", error);
+            alert("Erro ao salvar dados no banco de dados.");
         }
     };
 
@@ -267,6 +349,15 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                 const updatedEmp = { ...emp, isMagic: true };
                 onSaveEmployee(updatedEmp);
             }
+
+            // Save all to Supabase
+            await Promise.all(slips.map(s => saveSalarySlip(s)));
+
+            // Update local state
+            setRemotePayroll(prev => {
+                const newIds = new Set(slips.map(s => `${s.employeeId}-${s.month}-${s.year}`));
+                return [...prev.filter(s => !newIds.has(`${s.employeeId}-${s.month}-${s.year}`)), ...slips];
+            });
 
             onProcessPayroll(slips);
 
@@ -325,6 +416,13 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
             year: processingYear,
             days: data
         };
+
+        // Save to Supabase
+        saveAttendance(record).then(() => {
+            // Update remote state
+            setRemoteAttendance(prev => [...prev.filter(a => a.employeeId !== employeeId || a.month !== processingMonth || a.year !== processingYear), record]);
+        }).catch(err => console.error("Error saving attendance:", err));
+
         onSaveAttendance(record);
 
         // Update employee status to Green (Processed)
@@ -554,57 +652,7 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
 
         return (
             <div className="space-y-4 animate-in fade-in">
-                {/* Header similar to the image */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
-                    <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">ASSIDUIDADE DOS COLABORADORES</h2>
-                    <div className="flex gap-3 items-center">
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span>Valores em AOA</span>
-                        </div>
-
-                        <button
-                            onClick={() => setShowTaxMaps(true)}
-                            className="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition flex items-center gap-2"
-                        >
-                            <Table size={16} className="text-blue-600" />
-                            <span className="hidden xl:inline">Mapas IRT/ INSS</span>
-                        </button>
-
-                        <button
-                            onClick={() => setShowTransferOrder(true)}
-                            className="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition flex items-center gap-2"
-                        >
-                            <ArrowRightLeft size={16} className="text-green-600" />
-                            <span className="hidden xl:inline">Ordem de Transferência</span>
-                        </button>
-
-                        <button
-                            onClick={() => setShowReceipts(true)}
-                            className="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition flex items-center gap-2"
-                        >
-                            <Printer size={16} className="text-purple-600" />
-                            <span className="hidden xl:inline">Recibos de Salário</span>
-                        </button>
-
-                        <button
-                            onClick={() => setShowProcessingModal(true)}
-                            className="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition flex items-center gap-2"
-                        >
-                            <Calculator size={16} className="text-green-600" />
-                            <span className="hidden xl:inline">Processamento</span>
-                        </button>
-
-                        <button
-                            onClick={() => window.print()}
-                            className="bg-white border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition flex items-center gap-2"
-                        >
-                            <Printer size={16} className="text-slate-600" />
-                            <span className="hidden xl:inline">Imprimir Lista</span>
-                        </button>
-
-                    </div>
-                </div>
-
+                {/* Header removed and merged into main toolbar */}
 
                 {/* Table with clean design like the image */}
                 {/* Render the Effectivity List with Month Selector */}
@@ -626,62 +674,89 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                     </button>
                     <h1 className="text-2xl font-bold text-slate-800">CLASSIFICADOR SALARIAL</h1>
                 </div>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => setActiveTab('PROFISSÕES')}
-                        className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg flex items-center gap-2 text-xs font-bold hover:bg-slate-50 hover:text-blue-600 transition shadow-sm"
-                    >
-                        <Settings size={16} /> <span className="hidden sm:inline">Definição de Profissões</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('COLABORADORES')}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-xs font-bold hover:bg-blue-700 transition shadow-md"
-                    >
-                        <Plus size={16} /> <span className="hidden sm:inline">Novo Colaborador</span>
-                    </button>
-                </div>
             </div>
 
-            {/* Tabs */}
-            <div className="mb-6">
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => setActiveTab('ASSIDUIDADE')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'ASSIDUIDADE'
-                            ? 'bg-blue-600 text-white shadow-md'
-                            : 'bg-white text-slate-600 hover:bg-slate-100'
-                            }`}
-                    >
-                        Assiduidade dos Colaboradores
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('PROFISSÕES')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'PROFISSÕES'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-slate-600 hover:bg-slate-100'
-                            }`}
-                    >
-                        Profissões
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('COLABORADORES')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'COLABORADORES'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-slate-600 hover:bg-slate-100'
-                            }`}
-                    >
-                        Colaboradores
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('PROCESSAMENTO')}
-                        className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${activeTab === 'PROCESSAMENTO'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white text-slate-600 hover:bg-slate-100'
-                            }`}
-                    >
-                        Processamento
-                    </button>
-                </div>
+            {/* Unified Toolbar: Tabs + Actions */}
+            <div className="mb-6 flex flex-wrap items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+
+                {/* Navigation Tabs */}
+                <button
+                    onClick={() => setActiveTab('ASSIDUIDADE')}
+                    className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'ASSIDUIDADE'
+                        ? 'bg-slate-800 text-white shadow-md'
+                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                        }`}
+                >
+                    Assiduidade dos Colaboradores
+                </button>
+                <button
+                    onClick={() => setActiveTab('PROFISSÕES')}
+                    className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'PROFISSÕES'
+                        ? 'bg-slate-800 text-white'
+                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                        }`}
+                >
+                    Profissões
+                </button>
+                <button
+                    onClick={() => setActiveTab('COLABORADORES')}
+                    className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'COLABORADORES'
+                        ? 'bg-slate-800 text-white'
+                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                        }`}
+                >
+                    Colaboradores
+                </button>
+                <button
+                    onClick={() => setActiveTab('PROCESSAMENTO')}
+                    className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'PROCESSAMENTO'
+                        ? 'bg-slate-800 text-white'
+                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                        }`}
+                >
+                    Processamento
+                </button>
+
+                {/* Divider */}
+                <div className="w-px h-8 bg-slate-200 mx-2"></div>
+
+                {/* Action Buttons (Moved from ASSIDUIDADE header) */}
+                <button
+                    onClick={() => {
+                        setTransferOrderParams({ viewMode: 'LIST' });
+                        setShowTransferOrder(true);
+                    }}
+                    className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"
+                >
+                    <ArrowRightLeft size={14} className="text-green-600" />
+                    Ordem de Transferência
+                </button>
+
+                <button
+                    onClick={() => setShowReceipts(true)}
+                    className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"
+                >
+                    <Printer size={14} className="text-purple-600" />
+                    Recibos de Salário
+                </button>
+
+                <button
+                    onClick={() => setShowGeneralSalaryMap(true)}
+                    className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"
+                >
+                    <Table size={14} className="text-blue-600" />
+                    Mapa Geral IRT/INSS
+                </button>
+
+                {/* "Processamento" Action Button REMOVED as per request */}
+
+                <button
+                    onClick={() => window.print()}
+                    className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"
+                >
+                    <Printer size={14} className="text-slate-600" />
+                    Imprimir Lista
+                </button>
             </div>
 
             {/* Content */}
@@ -710,7 +785,8 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                 {activeTab === 'PROCESSAMENTO' && (
                     <ProcessSalary
                         employees={employees}
-                        onProcessPayroll={onProcessPayroll}
+                        onProcessPayroll={handleProcessSalaryCallback}
+                        payroll={displayPayroll}
                         currentMonth={processingMonth}
                         currentYear={processingYear}
                         cashRegisters={cashRegisters}
@@ -721,26 +797,58 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                             if (onToggleSidebarTheme) onToggleSidebarTheme(true);
                         }}
                         onToggleSidebarTheme={onToggleSidebarTheme}
+                        onToggleSidebar={onToggleSidebar}
+                        onSaveTransferOrder={async (order) => {
+                            const saved = await saveTransferOrder(order);
+                            setRemoteTransferOrders(prev => [...prev, saved]);
+                            return saved;
+                        }}
                         onShowReceipts={(ids) => {
                             setReceiptFilterIds(ids || []);
                             setShowReceipts(true);
                         }}
                         existingTransferOrders={transferOrders}
-                        onViewTransferOrders={onViewTransferOrders}
+                        onViewTransferOrders={(month, year) => {
+                            setTransferOrderParams({ month, year, viewMode: month ? 'DETAIL' : 'LIST' });
+                            setShowTransferOrder(true);
+                        }}
+                        onFastProcessAttendance={async (empIds) => {
+                            // Create default attendance records (Full Attendance)
+                            const promises = empIds.map(id => {
+                                // Check if already exists? saveAttendance handles upsert
+                                return saveAttendance({
+                                    employee_id: id,
+                                    month: processingMonth,
+                                    year: processingYear,
+                                    status: 'PROCESSED',
+                                    days_worked: 22, // Default business days
+                                    absences: 0,
+                                    details: [] // No daily details for fast process
+                                });
+                            });
+                            await Promise.all(promises);
+                            // Update local state
+                            const newAtts = { ...remoteAttendance };
+                            empIds.forEach(id => {
+                                newAtts[id] = { id, employee_id: id, month: processingMonth, year: processingYear, status: 'PROCESSED', days_worked: 22, absences: 0, details: [] };
+                            });
+                            setRemoteAttendance(newAtts);
+                        }}
                     />
                 )}
-                {showTaxMaps && (
-                    <TaxMaps
-                        company={company}
-                        payroll={payroll}
+                {showGeneralSalaryMap && (
+                    <SalaryMapIRTINSS
+                        payroll={displayPayroll} // Use displayPayroll
                         employees={employees}
-                        onClose={() => setShowTaxMaps(false)}
+                        company={company}
+                        onClose={() => setShowGeneralSalaryMap(false)}
                     />
                 )}
+
                 {showReceipts && (
                     <SalaryReceiptsModal
                         company={company}
-                        payroll={payroll}
+                        payroll={displayPayroll} // Use displayPayroll
                         employees={employees}
                         onClose={() => setShowReceipts(false)}
                         onGoToProcessing={() => {
@@ -755,9 +863,15 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                 {showTransferOrder && (
                     <TransferOrderModal
                         company={company}
-                        payroll={payroll}
+                        payroll={displayPayroll} // Use displayPayroll
                         employees={employees}
-                        onClose={() => setShowTransferOrder(false)}
+                        onClose={() => {
+                            setShowTransferOrder(false);
+                            setTransferOrderParams({});
+                        }}
+                        initialMonth={transferOrderParams.month}
+                        initialYear={transferOrderParams.year}
+                        initialViewMode={transferOrderParams.viewMode}
                     />
                 )}
                 {showProcessingModal && (

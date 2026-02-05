@@ -1,5 +1,5 @@
-
 import { Invoice, InvoiceType } from "./types";
+import * as XLSX from 'xlsx';
 
 export const formatCurrency = (value: number): string => {
   return new Intl.NumberFormat('pt-AO', {
@@ -71,18 +71,14 @@ export const generateWhatsAppLink = (phone: string, message: string): string => 
 };
 
 export const exportToExcel = (data: any[], fileName: string) => {
-  // Simple CSV export simulation
   if (!data || data.length === 0) return;
-  const header = Object.keys(data[0]).join(",");
-  const rows = data.map(obj => Object.values(obj).map(v => `"${v}"`).join(","));
-  const csvContent = "data:text/csv;charset=utf-8," + [header, ...rows].join("\n");
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", `${fileName}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Mapa Salarial");
+
+  // Write to binary string and trigger download
+  XLSX.writeFile(workbook, `${fileName}.xlsx`);
 };
 
 // --- Helper for Document Prefixes ---

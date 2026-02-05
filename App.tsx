@@ -682,8 +682,9 @@ const App: React.FC = () => {
                     workLocations={workLocations}
                     cashRegisters={cashRegisters}
                     onUpdateCashRegister={(cr) => setCashRegisters(prev => prev.map(c => c.id === cr.id ? cr : c))}
-                    initialTab={currentView === 'HR_SALARY_PROC' ? 'SALARY_MODAL' : undefined}
+                    initialTab={currentView === 'HR_SALARY_PROC' ? 'PROCESSAMENTO' : undefined}
                     onToggleSidebarTheme={(white) => setIsSidebarWhite(white)}
+                    onToggleSidebar={(open) => setIsSidebarOpen(open)}
                 />;
             case 'AGRIBUSINESS':
                 return <Agribusiness />;
