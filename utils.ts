@@ -198,40 +198,220 @@ export const numberToExtenso = (valor: number, moedaPlural: string = "Kwanzas", 
 
 // --- Payroll Calculations (Angola AGT) ---
 
+/**
+ * INSS - Instituto Nacional de Segurança Social
+ * Trabalhador: 3%
+ * Empregador: 8%
+ * Base: Salário Base + Subsídios regulares
+ */
 export const calculateINSS = (baseAmount: number, foodSubsidy: number = 0, transportSubsidy: number = 0): number => {
-  // 3% Employee Share. Food and Transport are exempt up to 30,000 Kz each.
-  const foodTaxable = Math.max(0, foodSubsidy - 30000);
-  const transportTaxable = Math.max(0, transportSubsidy - 30000);
-  const totalTaxable = baseAmount + foodTaxable + transportTaxable;
-  return totalTaxable * 0.03;
+  // 3% Employee Share
+  const baseINSS = baseAmount + foodSubsidy + transportSubsidy;
+  return baseINSS * 0.03;
 };
 
 export const calculateINSSEntity = (baseAmount: number, foodSubsidy: number = 0, transportSubsidy: number = 0): number => {
-  // 8% Employer Share.
-  const foodTaxable = Math.max(0, foodSubsidy - 30000);
-  const transportTaxable = Math.max(0, transportSubsidy - 30000);
-  const totalTaxable = baseAmount + foodTaxable + transportTaxable;
-  return totalTaxable * 0.08;
+  // 8% Employer Share
+  const baseINSS = baseAmount + foodSubsidy + transportSubsidy;
+  return baseINSS * 0.08;
 };
 
-export const calculateIRT = (baseAmount: number, inss: number, foodSubsidy: number = 0, transportSubsidy: number = 0): number => {
-  // Tabela IRT Progressiva 2024 (Lei Geral)
-  // Food and Transport are exempt up to 30,000 Kz each.
-  const foodTaxable = Math.max(0, foodSubsidy - 30000);
-  const transportTaxable = Math.max(0, transportSubsidy - 30000);
-  const taxable = baseAmount + foodTaxable + transportTaxable - inss;
+/**
+ * IRT - Imposto sobre Rendimento do Trabalho
+ * Base tributável = Salário Bruto - INSS do Trabalhador
+ * Tabela progressiva por escalões
+ */
+export interface IRTBracket {
+  minValue: number;
+  maxValue: number | null;
+  rate: number;
+}
 
-  if (taxable <= 100000) return 0;
-  if (taxable <= 150000) return (taxable - 100000) * 0.10 + 0;
-  if (taxable <= 200000) return (taxable - 150000) * 0.15 + 5000;
-  if (taxable <= 300000) return (taxable - 200000) * 0.19 + 12500;
-  if (taxable <= 500000) return (taxable - 300000) * 0.20 + 31500;
-  if (taxable <= 1000000) return (taxable - 500000) * 0.21 + 71500;
-  if (taxable <= 1500000) return (taxable - 1000000) * 0.22 + 176500;
-  if (taxable <= 2000000) return (taxable - 1500000) * 0.23 + 286500;
-  if (taxable <= 2500000) return (taxable - 2000000) * 0.24 + 401500;
+// Tabela IRT padrão 2026 (configurável)
+export const DEFAULT_IRT_BRACKETS: IRTBracket[] = [
+  { minValue: 0, maxValue: 70000, rate: 0 },
+  { minValue: 70001, maxValue: 100000, rate: 10 },
+  { minValue: 100001, maxValue: 150000, rate: 13 },
+  { minValue: 150001, maxValue: 200000, rate: 16 },
+  { minValue: 200001, maxValue: 300000, rate: 18 },
+  { minValue: 300001, maxValue: 500000, rate: 19 },
+  { minValue: 500001, maxValue: null, rate: 20 }
+];
 
-  return (taxable - 2500000) * 0.25 + 521500;
+export const calculateIRT = (
+  baseAmount: number,
+  inss: number,
+  foodSubsidy: number = 0,
+  transportSubsidy: number = 0,
+  customBrackets?: IRTBracket[]
+): number => {
+  // Base tributável = Salário Bruto - INSS
+  const taxableBase = baseAmount + foodSubsidy + transportSubsidy - inss;
+
+  const brackets = customBrackets || DEFAULT_IRT_BRACKETS;
+
+  // Encontrar o escalão correspondente
+  const bracket = brackets.find(b => {
+    if (b.maxValue === null) {
+      return taxableBase >= b.minValue;
+    }
+    return taxableBase >= b.minValue && taxableBase <= b.maxValue;
+  });
+
+  if (!bracket || bracket.rate === 0) return 0;
+
+  return (taxableBase * bracket.rate) / 100;
+};
+
+/**
+ * Cálculo de Faltas Injustificadas
+ * Salário Diário = Salário Base / 22 dias úteis
+ */
+export const calculateAbsenceDeduction = (baseSalary: number, absenceDays: number): number => {
+  const dailySalary = baseSalary / 22;
+  return dailySalary * absenceDays;
+};
+
+/**
+ * Cálculo de Horas Extras
+ * Hora Normal = Salário Base / 22 / 8
+ * Hora Extra Normal: +50%
+ * Hora Extra Domingo/Feriado: +100%
+ */
+export const calculateOvertimePay = (
+  baseSalary: number,
+  normalHours: number = 0,
+  holidayHours: number = 0
+): number => {
+  const hourlyRate = baseSalary / 22 / 8;
+  const normalOvertimePay = hourlyRate * 1.5 * normalHours;
+  const holidayOvertimePay = hourlyRate * 2 * holidayHours;
+  return normalOvertimePay + holidayOvertimePay;
+};
+
+/**
+ * Cálculo de Horas Perdidas
+ */
+export const calculateLostHoursPenalty = (baseSalary: number, lostHours: number): number => {
+  const hourlyRate = baseSalary / 22 / 8;
+  return hourlyRate * lostHours;
+};
+
+/**
+ * Subsídio de Férias
+ * Valor = Salário Base (pago antes do gozo de férias)
+ */
+export const calculateVacationSubsidy = (baseSalary: number): number => {
+  return baseSalary;
+};
+
+/**
+ * Abono de Família
+ * Valor configurável por filho
+ */
+export const calculateFamilyAllowance = (numberOfChildren: number, valuePerChild: number = 5000): number => {
+  return numberOfChildren * valuePerChild;
+};
+
+/**
+ * Cálculo Completo do Salário
+ */
+export interface SalaryCalculationInput {
+  baseSalary: number;
+  subsidyTransport: number;
+  subsidyFood: number;
+  subsidyHousing: number;
+  subsidyChristmas: number;
+  subsidyVacation: number;
+  otherSubsidies: number;
+  bonuses: number;
+  gratifications: number;
+  absenceDays: number;
+  overtimeNormalHours: number;
+  overtimeHolidayHours: number;
+  lostHours: number;
+  advances: number;
+  penalties: number;
+  fines: number;
+  irtBrackets?: IRTBracket[];
+}
+
+export interface SalaryCalculationResult {
+  // Proventos
+  baseSalary: number;
+  subsidies: number;
+  bonuses: number;
+  overtimePay: number;
+  grossTotal: number;
+
+  // Descontos
+  inssEmployee: number;
+  inssEmployer: number;
+  irt: number;
+  absenceDeduction: number;
+  lostHoursPenalty: number;
+  advances: number;
+  penalties: number;
+  fines: number;
+  totalDeductions: number;
+
+  // Líquido
+  netTotal: number;
+}
+
+export const calculateCompleteSalary = (input: SalaryCalculationInput): SalaryCalculationResult => {
+  // 1. Proventos
+  const subsidies = input.subsidyTransport + input.subsidyFood + input.subsidyHousing +
+    input.subsidyChristmas + input.subsidyVacation + input.otherSubsidies;
+
+  const overtimePay = calculateOvertimePay(
+    input.baseSalary,
+    input.overtimeNormalHours,
+    input.overtimeHolidayHours
+  );
+
+  const bonuses = input.bonuses + input.gratifications;
+
+  const grossTotal = input.baseSalary + subsidies + bonuses + overtimePay;
+
+  // 2. Descontos
+  const inssEmployee = calculateINSS(input.baseSalary, input.subsidyFood, input.subsidyTransport);
+  const inssEmployer = calculateINSSEntity(input.baseSalary, input.subsidyFood, input.subsidyTransport);
+
+  const irt = calculateIRT(
+    input.baseSalary,
+    inssEmployee,
+    input.subsidyFood,
+    input.subsidyTransport,
+    input.irtBrackets
+  );
+
+  const absenceDeduction = calculateAbsenceDeduction(input.baseSalary, input.absenceDays);
+  const lostHoursPenalty = calculateLostHoursPenalty(input.baseSalary, input.lostHours);
+
+  const totalDeductions = inssEmployee + irt + absenceDeduction + lostHoursPenalty +
+    input.advances + input.penalties + input.fines;
+
+  // 3. Líquido
+  const netTotal = grossTotal - totalDeductions;
+
+  return {
+    baseSalary: input.baseSalary,
+    subsidies,
+    bonuses,
+    overtimePay,
+    grossTotal,
+    inssEmployee,
+    inssEmployer,
+    irt,
+    absenceDeduction,
+    lostHoursPenalty,
+    advances: input.advances,
+    penalties: input.penalties,
+    fines: input.fines,
+    totalDeductions,
+    netTotal
+  };
 };
 
 export const roundToNearestBank = (value: number): number => {

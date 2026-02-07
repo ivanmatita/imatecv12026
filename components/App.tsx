@@ -49,6 +49,7 @@ import WithholdingTaxManager from './WithholdingTaxManager';
 import TransferOrderView from './TransferOrderView';
 import Agribusiness from './Agribusiness';
 import ChurchManagement from './ChurchManagement';
+import IRTTableManager from './IRTTableManager';
 
 import { supabase } from '../services/supabaseClient';
 
@@ -1321,6 +1322,7 @@ const App = () => {
           onViewTransferOrders={() => setCurrentView('HR_TRANSFER_ORDERS')}
         />;
       case 'HR_TRANSFER_ORDERS': return <TransferOrderList orders={transferOrders} company={currentCompany} autoOpenId={autoOpenTransferOrderId} onDeleteOrder={id => setTransferOrders(prev => prev.filter(o => o.id !== id))} />;
+      case 'HR_IRT_TABLE': return <IRTTableManager />;
       case 'HR_PERFORMANCE': return <PerformanceAnalysis logs={userActivity} employees={hrEmployees} users={users} />;
       case 'HR_CONTRACT_ISSUE':
         if (!selectedHrEmployee) return <div className="p-8 text-center text-slate-400">Seleccione um funcionário primeiro.</div>;

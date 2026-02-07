@@ -151,6 +151,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isOpen, se
         { id: 'HR', label: 'Gestão Geral' },
         { id: 'HR_ATTENDANCE_MAP', label: 'Assiduidade dos Colaboradores', icon: Calendar },
         { id: 'HR_SALARY_PROC', label: 'Processamento', icon: Calculator },
+        { id: 'HR_IRT_TABLE', label: 'Tabela de IRT', icon: Percent },
         { id: 'HR_TRANSFER_ORDERS', label: 'Ordens de Transferência', icon: ArrowRightLeft },
         { id: 'HR_PERFORMANCE', label: 'Análise de Desempenho', icon: BarChart3 }
       ]

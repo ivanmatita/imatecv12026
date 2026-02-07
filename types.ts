@@ -128,6 +128,7 @@ export type ViewState =
   | 'HR_EMPLOYEES'
   | 'HR_PERFORMANCE'
   | 'HR_CONTRACT_ISSUE'
+  | 'HR_IRT_TABLE'
   | 'HR_TRANSFER_ORDERS'
   | 'HR_ATTENDANCE_MAP'
   | 'HR_SALARY_PROC'

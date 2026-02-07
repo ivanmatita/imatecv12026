@@ -24,6 +24,7 @@ import ManagementReports from './components/ManagementReports';
 import Agribusiness from './components/Agribusiness';
 import ChurchManagement from './components/ChurchManagement';
 import AttendanceMapPage from './components/AttendanceMapPage';
+import IRTTable from './components/IRTTable';
 
 import {
     Invoice, InvoiceStatus, ViewState, Client, Product, InvoiceType,
@@ -719,6 +720,8 @@ const App: React.FC = () => {
                     onToggleSidebarTheme={(white) => setIsSidebarWhite(white)}
                     onToggleSidebar={(open) => setIsSidebarOpen(open)}
                 />;
+            case 'HR_IRT_TABLE':
+                return <IRTTable />;
             case 'AGRIBUSINESS':
                 return <Agribusiness />;
             case 'CHURCH_MANAGEMENT':
