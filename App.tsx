@@ -668,6 +668,31 @@ const App: React.FC = () => {
                     workLocations={workLocations}
                     attendanceRecords={attendance}
                 />;
+            case 'HR_EMPLOYEES':
+                return <HumanResources
+                    employees={employees}
+                    onSaveEmployee={(e) => setEmployees(prev => prev.map(emp => emp.id === e.id ? e : emp).concat(prev.find(emp => emp.id === e.id) ? [] : [e]))}
+                    transactions={hrTransactions}
+                    onSaveTransaction={(t) => setHrTransactions([...hrTransactions, t])}
+                    vacations={hrVacations}
+                    onSaveVacation={(v) => setHrVacations([...hrVacations, v])}
+                    payroll={payrollHistory}
+                    onProcessPayroll={(p) => setPayrollHistory([...payrollHistory, ...p])}
+                    professions={professions}
+                    onSaveProfession={(p) => setProfessions([...professions.filter(pr => pr.id !== p.id), p])}
+                    onDeleteProfession={(id) => setProfessions(professions.filter(p => p.id !== id))}
+                    contracts={contracts}
+                    onSaveContract={(c) => setContracts([...contracts, c])}
+                    attendance={attendance}
+                    onSaveAttendance={(a) => setAttendance([...attendance, a])}
+                    company={MOCK_COMPANY}
+                    workLocations={workLocations}
+                    cashRegisters={cashRegisters}
+                    onUpdateCashRegister={(cr) => setCashRegisters(prev => prev.map(c => c.id === cr.id ? cr : c))}
+                    initialTab="COLABORADORES"
+                    onToggleSidebarTheme={(white) => setIsSidebarWhite(white)}
+                    onToggleSidebar={(open) => setIsSidebarOpen(open)}
+                />;
             case 'HR':
             case 'HR_SALARY_PROC':
                 return <HumanResources

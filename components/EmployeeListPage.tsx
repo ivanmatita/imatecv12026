@@ -11,6 +11,7 @@ interface EmployeeListPageProps {
     onEdit?: (emp: Employee) => void;
     onDelete?: (empId: string) => void;
     onViewDetails?: (emp: Employee) => void;
+    onCreate?: () => void;
 }
 
 const EmployeeListPage: React.FC<EmployeeListPageProps> = ({
@@ -20,7 +21,8 @@ const EmployeeListPage: React.FC<EmployeeListPageProps> = ({
     professions,
     onEdit,
     onDelete,
-    onViewDetails
+    onViewDetails,
+    onCreate
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [departmentFilter, setDepartmentFilter] = useState('ALL');
@@ -145,6 +147,15 @@ const EmployeeListPage: React.FC<EmployeeListPageProps> = ({
                         <span className="font-bold">{filteredEmployees.length}</span> colaborador(es) encontrado(s)
                     </div>
                     <div className="flex gap-2">
+                        {onCreate && (
+                            <button
+                                onClick={onCreate}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2 font-bold text-sm shadow-sm"
+                            >
+                                <Plus size={16} />
+                                Novo Colaborador
+                            </button>
+                        )}
                         <button
                             onClick={() => window.print()}
                             className="px-4 py-2 bg-white border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition flex items-center gap-2 font-bold text-sm"

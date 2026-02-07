@@ -284,6 +284,9 @@ export interface Employee {
   contractType: 'Determinado' | 'Indeterminado' | 'Estagio';
   contractClauses?: string[];
   isCashier?: boolean;
+  idCardNumber?: string;
+  paymentMethod?: PaymentMethod;
+  socialSecurityNumber?: string;
 
   // Subsidies
   subsidyTransport: number;
@@ -400,6 +403,7 @@ export interface SalarySlip {
   subsidyHousing: number;
   subsidyChristmas?: number;
   subsidyVacation?: number;
+  otherSubsidies?: number;
   absences: number;
   absencesJustified?: number;
   advances: number;

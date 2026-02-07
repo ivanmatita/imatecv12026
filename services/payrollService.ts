@@ -197,18 +197,94 @@ export async function getTransferOrders(month?: number, year?: number) {
 }
 
 // ================= EMPLOYEES =================
-// Only specific updates related to payroll usually, but syncing employees might be needed.
 export async function getEmployees() {
     const { data, error } = await supabase.from('employees').select('*');
     if (error) throw error;
 
-    // Simplistic mapping, full mapping depends on DB schema vs Type
     return data.map((d: any) => ({
-        ...d,
-        // Map snake_case to camelCase
         id: d.id,
         name: d.name,
-        // ... incomplete mapping, better to rely on what's needed or assume shared structure if possible
-        // For now returning as is if the user uses a library that handles this or if I map manually in the main component
-    }));
+        nif: d.nif,
+        idCardNumber: d.id_card_number,
+        birthDate: d.birth_date,
+        gender: d.gender,
+        maritalStatus: d.marital_status,
+        nationality: d.nationality,
+        email: d.email,
+        phone: d.phone,
+        address: d.address,
+        employeeNumber: d.employee_number,
+        role: d.role,
+        department: d.department,
+        admissionDate: d.admission_date,
+        contractType: d.contract_type,
+        workLocationId: d.work_location_id,
+        professionId: d.profession_id,
+        status: d.status,
+        baseSalary: d.base_salary,
+        bankName: d.bank_name,
+        iban: d.iban,
+        paymentMethod: d.payment_method,
+        socialSecurityNumber: d.social_security_number,
+        subsidyFood: d.subsidy_food,
+        subsidyTransport: d.subsidy_transport,
+        subsidyFamily: d.subsidy_family,
+        subsidyHousing: d.subsidy_housing,
+        allowances: d.allowances,
+        photoUrl: d.photo_url
+    })) as Employee[];
+}
+
+export async function saveEmployee(emp: Employee) {
+    const dbEmp = {
+        id: emp.id,
+        name: emp.name,
+        nif: emp.nif,
+        id_card_number: emp.idCardNumber,
+        birth_date: emp.birthDate,
+        gender: emp.gender,
+        marital_status: emp.maritalStatus,
+        nationality: emp.nationality,
+        email: emp.email,
+        phone: emp.phone,
+        address: emp.address,
+        employee_number: emp.employeeNumber,
+        role: emp.role,
+        department: emp.department,
+        admission_date: emp.admissionDate,
+        contract_type: emp.contractType,
+        work_location_id: emp.workLocationId,
+        profession_id: emp.professionId,
+        status: emp.status,
+        base_salary: emp.baseSalary,
+        bank_name: emp.bankName,
+        iban: emp.iban,
+        payment_method: emp.paymentMethod,
+        social_security_number: emp.socialSecurityNumber,
+        subsidy_food: emp.subsidyFood,
+        subsidy_transport: emp.subsidyTransport,
+        subsidy_family: emp.subsidyFamily,
+        subsidy_housing: emp.subsidyHousing,
+        allowances: emp.allowances,
+        photo_url: emp.photoUrl,
+        updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+        .from('employees')
+        .upsert(dbEmp)
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+}
+
+export async function deleteEmployee(id: string) {
+    const { error } = await supabase
+        .from('employees')
+        .delete()
+        .eq('id', id);
+
+    if (error) throw error;
 }

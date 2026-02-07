@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Company, Employee, SalarySlip } from '../types';
 import { formatCurrency, formatDate, roundToNearestBank } from '../utils';
-import { X, Printer, Download, Calendar, Send, CreditCard, User, Eye, Edit, Trash2, Plus } from 'lucide-react';
+import { X, Printer, Download, Calendar, Send, CreditCard, User, Eye, Edit, Trash2, Plus, ArrowRightLeft } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -81,107 +81,119 @@ const TransferOrderModal: React.FC<TransferOrderModalProps> = ({ company, payrol
 
     if (viewMode === 'LIST') {
         return (
-            <div className="fixed inset-0 z-[150] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-0 md:p-4 overflow-hidden animate-in fade-in duration-300">
-                <div className="bg-white w-full max-w-4xl h-full md:h-auto md:max-h-[85vh] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
-                    {/* Header */}
-                    <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-white sticky top-0 z-10">
+            <div className="fixed inset-0 z-[150] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300">
+                <div className="bg-white w-full max-w-6xl h-full max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+
+                    {/* Header with gradient */}
+                    <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-blue-800 text-white p-6 flex justify-between items-center shadow-lg z-10">
                         <div>
-                            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Ordens de Transferência</h2>
-                            <p className="text-sm text-slate-500">Histórico de processamentos bancários</p>
+                            <h2 className="text-2xl font-bold flex items-center gap-3">
+                                <ArrowRightLeft size={28} className="text-blue-200" />
+                                Ordem de Transferência
+                            </h2>
+                            <p className="text-blue-100 text-sm mt-1 ml-10">Gestão e controlo de pagamentos bancários</p>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-3">
                             <button
                                 onClick={() => {
                                     setSelectedMonth(new Date().getMonth() + 1);
                                     setSelectedYear(new Date().getFullYear());
                                     setViewMode('DETAIL');
                                 }}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition"
+                                className="flex items-center gap-2 px-5 py-2.5 bg-white text-blue-700 hover:bg-blue-50 rounded-lg text-sm font-bold shadow-md transition"
                             >
-                                <Plus size={16} /> Nova Ordem
+                                <Plus size={18} /> Nova Ordem
                             </button>
-                            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition">
-                                <X size={20} />
+                            <button
+                                onClick={onClose}
+                                className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition"
+                            >
+                                <X size={24} />
                             </button>
                         </div>
                     </div>
 
-                    {/* List Content */}
-                    <div className="overflow-auto p-6 bg-slate-50 flex-1">
+                    {/* Table Content */}
+                    <div className="overflow-auto bg-slate-50 flex-1 p-6">
                         {groupedOrders.length === 0 ? (
-                            <div className="text-center py-12">
-                                <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                                    <Send size={32} />
+                            <div className="flex flex-col items-center justify-center h-64 text-center">
+                                <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center mb-4 text-slate-400">
+                                    <Send size={40} />
                                 </div>
-                                <h3 className="text-lg font-bold text-slate-700">Nenhuma ordem encontrada</h3>
-                                <p className="text-slate-500">Processe salários para gerar ordens de transferência.</p>
+                                <h3 className="text-xl font-bold text-slate-700">Nenhuma ordem encontrada</h3>
+                                <p className="text-slate-500 mt-2">Processe salários para gerar ordens de transferência.</p>
                             </div>
                         ) : (
-                            <div className="grid gap-3">
-                                {groupedOrders.map((order, idx) => (
-                                    <div key={idx} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
-                                        <div className="flex items-center gap-4">
-                                            <div className="bg-emerald-100 p-3 rounded-lg text-emerald-600">
-                                                <Calendar size={24} />
-                                            </div>
-                                            <div>
-                                                <h3 className="font-bold text-slate-800 text-lg">
-                                                    {months[order.month - 1]} de {order.year}
-                                                </h3>
-                                                <div className="flex gap-4 text-sm text-slate-500">
-                                                    <span className="flex items-center gap-1"><User size={14} /> {order.count} Colaboradores</span>
-                                                    <span className="font-mono font-bold text-slate-600">{formatCurrency(order.total)}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedMonth(order.month);
-                                                    setSelectedYear(order.year);
-                                                    setViewMode('DETAIL');
-                                                }}
-                                                className="p-1.5 hover:bg-amber-50 text-amber-600 rounded-lg transition"
-                                                title="Editar"
-                                            >
-                                                <Edit size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    alert('Esta funcionalidade apenas simula a remoção da visualização. Os dados de salário permanecerão salvos.')
-                                                }}
-                                                className="p-1.5 hover:bg-red-50 text-red-600 rounded-lg transition"
-                                                title="Apagar"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedMonth(order.month);
-                                                    setSelectedYear(order.year);
-                                                    setViewMode('DETAIL');
-                                                }}
-                                                className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition tooltip-trigger"
-                                                title="Ver Transferência"
-                                            >
-                                                <Eye size={16} />
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedMonth(order.month);
-                                                    setSelectedYear(order.year);
-                                                    setViewMode('DETAIL');
-                                                    setTimeout(() => window.print(), 500);
-                                                }}
-                                                className="p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition"
-                                                title="Imprimir"
-                                            >
-                                                <Printer size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-xs border-b border-slate-200">
+                                        <tr>
+                                            <th className="px-6 py-4">Referência</th>
+                                            <th className="px-6 py-4">Data</th>
+                                            <th className="px-6 py-4">Referente a</th>
+                                            <th className="px-6 py-4 text-right">Montante Total</th>
+                                            <th className="px-6 py-4 text-center w-40">Opções</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {groupedOrders.map((order, idx) => (
+                                            <tr key={idx} className="hover:bg-blue-50/50 transition duration-150 group">
+                                                <td className="px-6 py-4 font-mono font-bold text-slate-600">
+                                                    TRF/{order.year}/{String(order.month).padStart(2, '0')}
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-600">
+                                                    {new Date(order.year, order.month, 0).toLocaleDateString('pt-PT')}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className="font-bold text-slate-800">
+                                                        Salários de {months[order.month - 1]} {order.year}
+                                                    </span>
+                                                    <div className="text-xs text-slate-500 mt-0.5">
+                                                        {order.count} colaboradores incluídos
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-right font-bold text-emerald-600 text-lg">
+                                                    {formatCurrency(order.total).replace('AOA', 'Kz')}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center justify-center gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedMonth(order.month);
+                                                                setSelectedYear(order.year);
+                                                                setViewMode('DETAIL');
+                                                            }}
+                                                            className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition tooltip-trigger"
+                                                            title="Ver Detalhes"
+                                                        >
+                                                            <Eye size={18} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedMonth(order.month);
+                                                                setSelectedYear(order.year);
+                                                                setViewMode('DETAIL');
+                                                            }}
+                                                            className="p-2 text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition"
+                                                            title="Imprimir"
+                                                        >
+                                                            <Printer size={18} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                alert('Esta funcionalidade apenas simula a remoção da visualização. Os dados de salário permanecerão salvos.')
+                                                            }}
+                                                            className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition"
+                                                            title="Eliminar"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </div>
@@ -241,7 +253,7 @@ const TransferOrderModal: React.FC<TransferOrderModalProps> = ({ company, payrol
                             {filteredSlips.length > 0 ? filteredSlips.map((slip, index) => {
                                 const emp = employees.find(e => e.id === slip.employeeId);
                                 const isBankPayment = emp?.paymentMethod === 'Transferencia'; // heuristic
-                                
+
                                 return (
                                     <div key={slip.id} className="relative border-b border-black pb-2 mb-2 last:border-0 page-break-inside-avoid">
                                         <div className="flex justify-between items-end">
@@ -263,7 +275,7 @@ const TransferOrderModal: React.FC<TransferOrderModalProps> = ({ company, payrol
                                                     <span className="w-20">Iban</span>
                                                     <span>{isBankPayment ? emp?.iban : ''}</span>
                                                 </div>
-                                                
+
                                                 <div className="pt-2 text-xs font-normal">
                                                     Transferência Salario de {months[selectedMonth - 1]} de {selectedYear} de {slip.employeeName}.
                                                 </div>

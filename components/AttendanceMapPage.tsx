@@ -1,20 +1,52 @@
-import React, { useState, useMemo } from 'react';
-import { Employee, AttendanceRecord } from '../types';
-import { Calendar, Search, Filter, Save, FileSpreadsheet, Printer, ChevronLeft, ChevronRight, User, CheckSquare } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Employee, AttendanceRecord, DailyAttendance } from '../types';
+import { Save, User, CheckSquare, X, ChevronDown } from 'lucide-react';
+
+interface MonthlyValues {
+    overtimeHours: number;
+    lostHours: number;
+    subsidyChristmas: number;
+    subsidyFood: number;
+    subsidyTransport: number;
+    otherSubsidies: number;
+}
 
 interface AttendanceMapPageProps {
     employees: Employee[];
     companyName: string;
     workLocations: { id: string; name: string }[];
     attendanceRecords: AttendanceRecord[];
-    onProcess?: (selectedEmployeeIds: string[], month: number, year: number) => void;
+    onProcess?: (
+        selectedEmployeeIds: string[],
+        month: number,
+        year: number,
+        attendanceData: Record<string, Record<number, DailyAttendance>>,
+        monthlyValues: Record<string, MonthlyValues>
+    ) => void;
 }
+
+const ATTENDANCE_OPTIONS = [
+    { code: 'SERVICO', label: 'P - Presença', short: 'P', color: 'text-emerald-600' },
+    { code: 'FOLGA', label: 'F - Folga', short: 'F', color: 'text-slate-400' },
+    { code: 'FALTA_INJUST', label: 'FI - Falta Injustificada', short: 'FI', color: 'text-red-600' },
+    { code: 'FALTA_JUST', label: 'FJ - Falta Justificada', short: 'FJ', color: 'text-amber-500' },
+    { code: 'FERIAS', label: 'V - Férias', short: 'V', color: 'text-blue-500' },
+    { code: 'ADMISSAO', label: 'I - Início', short: 'I', color: 'text-cyan-500' },
+];
 
 const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, companyName, workLocations, attendanceRecords, onProcess }) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [selectedWorkLocation, setSelectedWorkLocation] = useState<string>('all');
     const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+
+    // Local state for edits
+    const [localAttendance, setLocalAttendance] = useState<Record<string, Record<number, DailyAttendance>>>({});
+    const [localMonthlyValues, setLocalMonthlyValues] = useState<Record<string, MonthlyValues>>({});
+
+    // Popover State
+    const [activePopover, setActivePopover] = useState<{ empId: string, day: number, x: number, y: number } | null>(null);
+    const popoverRef = useRef<HTMLDivElement>(null);
 
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -24,56 +56,93 @@ const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, compan
         "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"
     ];
 
+    // Initialize local state from props when records change
+    useEffect(() => {
+        const initialAttendance: Record<string, Record<number, DailyAttendance>> = {};
+        const initialMonthly: Record<string, MonthlyValues> = {};
+
+        employees.forEach(emp => {
+            const record = attendanceRecords.find(r => r.employeeId === emp.id && r.month === selectedMonth && r.year === selectedYear);
+            if (record && record.days) {
+                initialAttendance[emp.id] = { ...record.days };
+            }
+
+            // Initialize monthly values with defaults or 0
+            initialMonthly[emp.id] = {
+                overtimeHours: 0,
+                lostHours: 0,
+                subsidyChristmas: emp.subsidyChristmas || 0,
+                subsidyFood: emp.subsidyFood || 0,
+                subsidyTransport: emp.subsidyTransport || 0,
+                otherSubsidies: emp.otherSubsidies || 0
+            };
+        });
+
+        setLocalAttendance(prev => ({ ...prev, ...initialAttendance }));
+        setLocalMonthlyValues(prev => ({ ...prev, ...initialMonthly }));
+    }, [attendanceRecords, selectedMonth, selectedYear, employees]);
+
+    // Close popover on click outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+                setActivePopover(null);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
     const isWeekend = (day: number) => {
         const date = new Date(selectedYear, selectedMonth - 1, day);
         return date.getDay() === 0 || date.getDay() === 6;
     };
 
     const getStatus = (empId: string, day: number) => {
-        const record = attendanceRecords.find(r =>
-            r.employeeId === empId &&
-            r.month === selectedMonth &&
-            r.year === selectedYear
-        );
+        // Check local first
+        if (localAttendance[empId] && localAttendance[empId][day]) {
+            return localAttendance[empId][day].status;
+        }
 
-        if (!record || !record.days || !record.days[day]) {
-            return isWeekend(day) ? 'F' : '';
-        }
-        const status = record.days[day].status;
-        switch (status) {
-            case 'FOLGA': return 'F';
-            case 'SERVICO': return 'P';
-            case 'FALTA_INJUST': return 'F'; 
-            case 'FALTA_JUST': return 'O'; // Changed to O (Outro/Justificada)
-            case 'FERIAS': return 'A'; // Absence/Ausencia 
-            case 'ADMISSAO': return 'I'; // Inicio
-            default: return isWeekend(day) ? 'F' : '';
-        }
+        // Fallback or Default logic
+        if (isWeekend(day)) return 'FOLGA';
+        return 'SERVICO'; // Default assumption
     };
 
-    const getStats = (empId: string) => {
-        const record = attendanceRecords.find(r =>
-            r.employeeId === empId &&
-            r.month === selectedMonth &&
-            r.year === selectedYear
-        );
+    const updateStatus = (empId: string, day: number, newStatus: string) => {
+        setLocalAttendance(prev => {
+            const empDays = prev[empId] || {};
+            return {
+                ...prev,
+                [empId]: {
+                    ...empDays,
+                    [day]: {
+                        ...(empDays[day] || { overtimeHours: 0, lostHours: 0, location: '1' }),
+                        status: newStatus as any
+                    }
+                }
+            };
+        });
+        setActivePopover(null);
+    };
 
-        let presencas = 0;
-        let faltas = 0;
+    const getMonthlyValue = (empId: string, field: keyof MonthlyValues) => {
+        return localMonthlyValues[empId]?.[field] || 0;
+    };
 
-        if (record && record.days) {
-            Object.values(record.days).forEach(d => {
-                if (d.status === 'SERVICO') presencas++;
-                if (d.status === 'FALTA_INJUST') faltas++;
-            });
-        }
-        return { presencas, faltas };
+    const updateMonthlyValue = (empId: string, field: keyof MonthlyValues, value: number) => {
+        setLocalMonthlyValues(prev => ({
+            ...prev,
+            [empId]: {
+                ...(prev[empId] || { overtimeHours: 0, lostHours: 0, subsidyChristmas: 0, subsidyFood: 0, subsidyTransport: 0, otherSubsidies: 0 }),
+                [field]: value
+            }
+        }));
     };
 
     const filteredEmployees = useMemo(() => {
         return employees.filter(emp => {
-            const matchesLocation = selectedWorkLocation === 'all' || emp.workLocationId === selectedWorkLocation;
-            return matchesLocation;
+            return selectedWorkLocation === 'all' || emp.workLocationId === selectedWorkLocation;
         });
     }, [employees, selectedWorkLocation]);
 
@@ -94,31 +163,92 @@ const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, compan
 
     const handleProcess = () => {
         if (onProcess) {
-            onProcess(Array.from(selectedEmployeeIds), selectedMonth, selectedYear);
-        } else {
-            alert(`Processando assiduidade para ${selectedEmployeeIds.size} funcionários... (Simulação)`);
+            // Prepare the full data payload
+            const attendancePayload = { ...localAttendance };
+
+            // Ensure every selected employee has their attendance record populated even if assumed default
+            // This is crucial for the calculation step to see the "SERVICO" vs "FOLGA"
+            if (activePopover) setActivePopover(null);
+
+            onProcess(
+                Array.from(selectedEmployeeIds),
+                selectedMonth,
+                selectedYear,
+                attendancePayload,
+                localMonthlyValues
+            );
         }
     };
 
-    // Calculate totals
-    const totalDeductions = filteredEmployees.reduce((acc, emp) => {
-        const { faltas } = getStats(emp.id);
-        const dailyRate = emp.baseSalary / 30;
-        return acc + (faltas * dailyRate);
-    }, 0);
-    
-    // Mock Total To Pay logic
-    const totalToPay = filteredEmployees.reduce((acc, emp) => acc + emp.baseSalary, 0) - totalDeductions;
+    // Calculation Helpers
+    const calculateTotals = () => {
+        let totalToPay = 0;
+        let totalDeductions = 0;
+
+        filteredEmployees.forEach(emp => {
+            const baseSalary = emp.baseSalary;
+            const dailyRate = baseSalary / 30; // Standard 30 days
+
+            // Count Faltas Injustificadas
+            let faltas = 0;
+            for (let d = 1; d <= daysInMonth; d++) {
+                const status = getStatus(emp.id, d);
+                if (status === 'FALTA_INJUST') faltas++;
+            }
+
+            // Monthly Values
+            const monthly = localMonthlyValues[emp.id] || { overtimeHours: 0, lostHours: 0, subsidyChristmas: emp.subsidyChristmas || 0, subsidyFood: emp.subsidyFood || 0, subsidyTransport: emp.subsidyTransport || 0, otherSubsidies: emp.otherSubsidies || 0 };
+
+            // Calc
+            const deductionVal = faltas * dailyRate;
+
+            // Simple Estimate
+            const earnings = baseSalary + (monthly.subsidyChristmas || 0) + (monthly.subsidyFood || 0) + (monthly.subsidyTransport || 0) + (monthly.otherSubsidies || 0);
+
+            totalToPay += (earnings - deductionVal);
+            totalDeductions += deductionVal;
+        });
+
+        return { totalToPay, totalDeductions };
+    };
+
+    const { totalToPay, totalDeductions } = calculateTotals();
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 font-sans text-slate-900">
+        <div className="flex flex-col h-full bg-slate-50 font-sans text-slate-900 relative">
+            {/* Popover */}
+            {activePopover && (
+                <div
+                    ref={popoverRef}
+                    className="absolute z-50 bg-white shadow-xl rounded-lg border border-slate-200 p-1 w-64 animate-in fade-in zoom-in-95 duration-100"
+                    style={{ top: activePopover.y + 5, left: Math.min(activePopover.x - 100, window.innerWidth - 300) }}
+                >
+                    <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase border-b border-slate-100 mb-1">
+                        Dia {activePopover.day} - Alterar Estado
+                    </div>
+                    {ATTENDANCE_OPTIONS.map(opt => (
+                        <button
+                            key={opt.code}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                updateStatus(activePopover.empId, activePopover.day, opt.code);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-slate-50 rounded flex items-center justify-between group"
+                        >
+                            <span className={`text-xs font-bold ${opt.color}`}>{opt.label}</span>
+                            {getStatus(activePopover.empId, activePopover.day) === opt.code && <CheckSquare size={12} className="text-blue-600" />}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {/* Header Gradient */}
             <div className="bg-gradient-to-r from-blue-900 to-slate-800 p-4 shadow-md">
                 <h1 className="text-xl font-bold text-white tracking-tight">Mapa de Assiduidade dos Funcionários</h1>
             </div>
 
             {/* Filters Bar */}
-            <div className="bg-white p-3 border-b border-slate-200 flex flex-wrap gap-4 items-center justify-between shadow-sm">
+            <div className="bg-white p-3 border-b border-slate-200 flex flex-wrap gap-4 items-center justify-between shadow-sm sticky top-0 z-20">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
                         <span className="text-xs font-bold text-slate-600 uppercase">Empresa:</span>
@@ -127,7 +257,7 @@ const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, compan
 
                     <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
                         <span className="text-xs font-bold text-slate-600 uppercase">Local de Trabalho:</span>
-                        <select 
+                        <select
                             value={selectedWorkLocation}
                             onChange={(e) => setSelectedWorkLocation(e.target.value)}
                             className="bg-transparent font-bold text-slate-800 text-sm outline-none cursor-pointer"
@@ -141,27 +271,27 @@ const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, compan
 
                     <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded border border-slate-200">
                         <span className="text-xs font-bold text-slate-600 uppercase">Mês/Ano:</span>
-                        <select 
-                            value={selectedMonth} 
+                        <select
+                            value={selectedMonth}
                             onChange={(e) => setSelectedMonth(Number(e.target.value))}
                             className="bg-transparent font-bold text-slate-800 text-sm outline-none cursor-pointer"
                         >
-                            {months.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+                            {months.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
                         </select>
                         <span className="text-slate-400">/</span>
-                        <select 
-                            value={selectedYear} 
+                        <select
+                            value={selectedYear}
                             onChange={(e) => setSelectedYear(Number(e.target.value))}
                             className="bg-transparent font-bold text-slate-800 text-sm outline-none cursor-pointer"
                         >
-                             <option value={2023}>2023</option>
-                             <option value={2024}>2024</option>
-                             <option value={2025}>2025</option>
+                            <option value={2026}>2026</option>
+                            <option value={2025}>2025</option>
+                            <option value={2024}>2024</option>
                         </select>
                     </div>
                 </div>
 
-                <button 
+                <button
                     onClick={handleProcess}
                     className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded shadow-lg shadow-orange-500/20 transition-transform active:scale-95 text-sm uppercase tracking-wide flex items-center gap-2"
                 >
@@ -171,82 +301,69 @@ const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, compan
 
             {/* Main Table */}
             <div className="flex-1 overflow-auto bg-white p-4">
-                <div className="border border-blue-900 rounded-sm overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                <div className="border border-blue-900 rounded-sm shadow-sm inline-block min-w-full">
+                    <div className="">
+                        <table className="text-left border-collapse w-full">
                             <thead>
                                 {/* Top Header */}
-                                <tr className="bg-blue-900 text-white text-xs uppercase font-bold">
-                                    <th className="w-10 p-2 border-r border-blue-800 text-center">
-                                       <div className="h-4 w-4 mx-auto"></div>
+                                <tr className="bg-blue-900 text-white text-xs uppercase font-bold sticky top-0 z-10">
+                                    <th className="w-10 p-2 border-r border-blue-800 text-center sticky left-0 bg-blue-900 z-20">
+                                        <div className="h-4 w-4 mx-auto"></div>
                                     </th>
-                                    <th className="p-2 border-r border-blue-800 min-w-[250px]">
+                                    <th className="p-2 border-r border-blue-800 min-w-[250px] sticky left-10 bg-blue-900 z-20">
                                         Funcionário
                                     </th>
                                     <th colSpan={daysInMonth} className="border-r border-blue-800 text-center bg-blue-900/50">
-                                        
+                                        Dias do Mês
                                     </th>
-                                    <th className="w-10"></th>
+                                    {/* Helper Headers for Extra Columns */}
+                                    <th className="p-2 border-r border-blue-800 min-w-[80px] text-center bg-blue-900">H.Extra</th>
+                                    <th className="p-2 border-r border-blue-800 min-w-[80px] text-center bg-blue-900">H.Perd</th>
+                                    <th className="p-2 border-r border-blue-800 min-w-[100px] text-center bg-blue-900">Sub.Natal</th>
+                                    <th className="p-2 border-r border-blue-800 min-w-[100px] text-center bg-blue-900">Sub.Ali</th>
+                                    <th className="p-2 border-r border-blue-800 min-w-[100px] text-center bg-blue-900">Sub.Trans</th>
+                                    <th className="p-2 border-r border-blue-800 min-w-[100px] text-center bg-blue-900">Outros</th>
                                 </tr>
                                 {/* Sub Header (Days) */}
                                 <tr className="bg-blue-50 text-blue-900 text-[10px] font-bold border-b border-blue-200">
-                                    <th className="p-2 border-r border-blue-200 text-center">
-                                         <input 
-                                            type="checkbox" 
+                                    <th className="p-2 border-r border-blue-200 text-center sticky left-0 bg-blue-50 z-20">
+                                        <input
+                                            type="checkbox"
                                             checked={selectedEmployeeIds.size === filteredEmployees.length && filteredEmployees.length > 0}
                                             onChange={toggleSelectAll}
                                             className="rounded border-slate-300 w-4 h-4 cursor-pointer"
                                         />
                                     </th>
-                                    <th className="p-2 border-r border-blue-200 flex items-center gap-2 text-blue-800 uppercase">
-                                        <span>MOSTRAR HORAS</span>
+                                    <th className="p-2 border-r border-blue-200 flex items-center gap-2 text-blue-800 uppercase sticky left-10 bg-blue-50 z-20">
+                                        <span>LISTA DE COLABORADORES</span>
                                     </th>
                                     {days.map(d => (
                                         <th key={d} className={`border-r border-blue-200 text-center min-w-[28px] ${isWeekend(d) ? 'bg-slate-200 text-red-500' : ''}`}>
                                             {d}
                                         </th>
                                     ))}
-                                    <th></th>
+                                    {/* Placeholders for subheaders of extra columns */}
+                                    <th className="border-r border-blue-200 bg-slate-100"></th>
+                                    <th className="border-r border-blue-200 bg-slate-100"></th>
+                                    <th className="border-r border-blue-200 bg-slate-100"></th>
+                                    <th className="border-r border-blue-200 bg-slate-100"></th>
+                                    <th className="border-r border-blue-200 bg-slate-100"></th>
+                                    <th className="bg-slate-100"></th>
                                 </tr>
                             </thead>
                             <tbody className="text-sm">
-                                {/* Seldet Row */}
-                                <tr className="bg-slate-50 border-b border-slate-200">
-                                    <td className="p-2 border-r border-slate-200 text-center">
-                                         <div className="w-4 h-4 border border-slate-300 bg-white rounded cursor-pointer mx-auto"></div>
-                                    </td>
-                                    <td className="p-2 border-r border-slate-200">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-bold text-slate-700 text-xs uppercase">Seldet:</span>
-                                            <select className="bg-transparent text-xs text-slate-500 outline-none w-full cursor-pointer">
-                                                <option>Selecionar funcionários</option>
-                                            </select>
-                                        </div>
-                                    </td>
-                                    {days.map(d => (
-                                        <td key={d} className="border-r border-slate-200 text-center p-0">
-                                            <div className="w-full h-8 flex items-center justify-center">
-                                                <div className="w-4 h-4 bg-emerald-500 rounded text-white flex items-center justify-center">
-                                                    <CheckSquare size={10} strokeWidth={3} />
-                                                </div>
-                                            </div>
-                                        </td>
-                                    ))}
-                                    <td></td>
-                                </tr>
-
                                 {/* Records */}
                                 {filteredEmployees.map((emp, idx) => (
                                     <tr key={emp.id} className={`border-b border-slate-100 hover:bg-blue-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
-                                        <td className="p-2 border-r border-slate-200 text-center bg-blue-50/30">
-                                             <input 
-                                                type="checkbox" 
+                                        <td className="p-2 border-r border-slate-200 text-center bg-blue-50/30 sticky left-0 z-10">
+                                            <input
+                                                type="checkbox"
                                                 checked={selectedEmployeeIds.has(emp.id)}
                                                 onChange={() => toggleEmployeeSelection(emp.id)}
                                                 className="rounded border-slate-300 w-4 h-4 cursor-pointer"
                                             />
                                         </td>
-                                        <td className="p-2 border-r border-slate-200">
+                                        <td className="p-2 border-r border-slate-200 sticky left-10 bg-inherit z-10">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-9 h-9 rounded-full bg-slate-200 overflow-hidden border border-slate-300 shrink-0">
                                                     {emp.photoUrl ? (
@@ -256,7 +373,7 @@ const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, compan
                                                     )}
                                                 </div>
                                                 <div className="leading-tight">
-                                                    <div className="font-bold text-blue-900 text-sm">{emp.name}</div>
+                                                    <div className="font-bold text-blue-900 text-sm whitespace-nowrap">{emp.name}</div>
                                                     <div className="flex items-center gap-2 mt-0.5">
                                                         <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1 rounded">Nº {emp.employeeNumber || '0000'}</span>
                                                         <span className="text-[10px] text-slate-400 truncate max-w-[100px]">{emp.role}</span>
@@ -264,52 +381,95 @@ const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, compan
                                                 </div>
                                             </div>
                                         </td>
+                                        {/* Days */}
                                         {days.map(d => {
                                             const status = getStatus(emp.id, d);
                                             const isWk = isWeekend(d);
+
+                                            // Mapping status to display
                                             let display = "";
                                             let textColor = "text-slate-300";
-
-                                            if (status === 'P') { display = "P"; textColor = "text-emerald-600 font-bold"; }
-                                            else if (status === 'F') { display = "F"; textColor = "text-blue-600 font-bold"; } // F for Falta Injust (Blue per image?)
-                                            else if (status === 'O') { display = "O"; textColor = "text-amber-500 font-bold"; } // O for Justified/Other
-                                            else if (status === 'I') { display = "I"; textColor = "text-cyan-500 font-bold"; } // I for Intro/Admission
-                                            else if (status === 'A') { display = "F"; textColor = "text-red-500 font-bold"; } // A (Ferias/Other)
-
-                                            // Weekend override
-                                            if (isWk && !display) {
-                                                // Empty
-                                            }
+                                            if (status === 'SERVICO') { display = "P"; textColor = "text-emerald-600 font-bold"; }
+                                            else if (status === 'FALTA_INJUST') { display = "FI"; textColor = "text-red-600 font-bold"; }
+                                            else if (status === 'FALTA_JUST') { display = "FJ"; textColor = "text-amber-500 font-bold"; }
+                                            else if (status === 'FOLGA') { display = "F"; textColor = "text-slate-400 font-bold"; }
+                                            else if (status === 'ADMISSAO') { display = "I"; textColor = "text-cyan-500 font-bold"; }
+                                            else if (status === 'FERIAS') { display = "V"; textColor = "text-blue-500 font-bold"; }
 
                                             return (
-                                                <td key={d} className={`border-r border-slate-100 p-0 text-center h-10 ${isWk ? 'bg-slate-50' : ''}`}>
+                                                <td
+                                                    key={d}
+                                                    className={`border-r border-slate-100 p-0 text-center h-10 min-w-[28px] cursor-pointer hover:bg-blue-100 ${isWk ? 'bg-slate-50' : ''}`}
+                                                    onClick={(e) => {
+                                                        const rect = e.currentTarget.getBoundingClientRect();
+                                                        setActivePopover({ empId: emp.id, day: d, x: rect.left + window.scrollX, y: rect.bottom + window.scrollY });
+                                                    }}
+                                                >
                                                     <span className={`text-xs ${textColor}`}>{display}</span>
-                                                    {(status === 'F' || status === 'A') && !isWk && (
-                                                         <div className="flex justify-center -mt-0.5">
-                                                            <div className="w-2.5 h-2.5 border border-slate-300 rounded bg-white"></div>
-                                                         </div>
+                                                    {(status === 'FALTA_INJUST') && (
+                                                        <div className="h-0.5 w-4 bg-red-500 mx-auto rounded-full mt-0.5"></div>
                                                     )}
                                                 </td>
                                             );
                                         })}
-                                        <td></td>
+
+                                        {/* Editable Extra Columns - Wide Inputs */}
+                                        <td className="border-r border-slate-200 p-1 min-w-[80px]">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-50 border border-slate-200 text-xs text-center rounded focus:ring-1 focus:ring-blue-500 outline-none p-1 font-mono"
+                                                value={getMonthlyValue(emp.id, 'overtimeHours') || ''}
+                                                onChange={(e) => updateMonthlyValue(emp.id, 'overtimeHours', Number(e.target.value))}
+                                                placeholder="0.0"
+                                            />
+                                        </td>
+                                        <td className="border-r border-slate-200 p-1 min-w-[80px]">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-50 border border-slate-200 text-xs text-center rounded focus:ring-1 focus:ring-blue-500 outline-none p-1 font-mono text-red-600"
+                                                value={getMonthlyValue(emp.id, 'lostHours') || ''}
+                                                onChange={(e) => updateMonthlyValue(emp.id, 'lostHours', Number(e.target.value))}
+                                                placeholder="0.0"
+                                            />
+                                        </td>
+                                        <td className="border-r border-slate-200 p-1 min-w-[100px]">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-50 border border-slate-200 text-xs text-center rounded focus:ring-1 focus:ring-blue-500 outline-none p-1 font-mono"
+                                                value={getMonthlyValue(emp.id, 'subsidyChristmas') || ''}
+                                                onChange={(e) => updateMonthlyValue(emp.id, 'subsidyChristmas', Number(e.target.value))}
+                                                placeholder="0"
+                                            />
+                                        </td>
+                                        <td className="border-r border-slate-200 p-1 min-w-[100px]">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-50 border border-slate-200 text-xs text-center rounded focus:ring-1 focus:ring-blue-500 outline-none p-1 font-mono"
+                                                value={getMonthlyValue(emp.id, 'subsidyFood') || ''}
+                                                onChange={(e) => updateMonthlyValue(emp.id, 'subsidyFood', Number(e.target.value))}
+                                                placeholder="0"
+                                            />
+                                        </td>
+                                        <td className="border-r border-slate-200 p-1 min-w-[100px]">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-50 border border-slate-200 text-xs text-center rounded focus:ring-1 focus:ring-blue-500 outline-none p-1 font-mono"
+                                                value={getMonthlyValue(emp.id, 'subsidyTransport') || ''}
+                                                onChange={(e) => updateMonthlyValue(emp.id, 'subsidyTransport', Number(e.target.value))}
+                                                placeholder="0"
+                                            />
+                                        </td>
+                                        <td className="p-1 min-w-[100px]">
+                                            <input
+                                                type="number"
+                                                className="w-full bg-slate-50 border border-slate-200 text-xs text-center rounded focus:ring-1 focus:ring-blue-500 outline-none p-1 font-mono"
+                                                value={getMonthlyValue(emp.id, 'otherSubsidies') || ''}
+                                                onChange={(e) => updateMonthlyValue(emp.id, 'otherSubsidies', Number(e.target.value))}
+                                                placeholder="0"
+                                            />
+                                        </td>
                                     </tr>
                                 ))}
-                                
-                                <tr className="bg-slate-50 border-t-2 border-blue-900 font-bold text-slate-700 text-xs">
-                                    <td colSpan={2} className="p-2 text-right uppercase">Total Geral:</td>
-                                    <td colSpan={daysInMonth} className="p-2 text-center text-blue-900">
-                                        <div className="flex gap-4 justify-center">
-                                            <span>61</span>
-                                            <span>15</span>
-                                            <span>10</span>
-                                            <span>2</span>
-                                            <span>2</span>
-                                            {/* Mock total numbers just for visual match */}
-                                        </div>
-                                    </td>
-                                    <td></td>
-                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -317,30 +477,26 @@ const AttendanceMapPage: React.FC<AttendanceMapPageProps> = ({ employees, compan
             </div>
 
             {/* Footer */}
-            <div className="bg-white p-6 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-12 text-sm">
+            <div className="bg-white p-6 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-12 text-sm z-20">
                 <div className="space-y-4">
-                     <div>
-                        <span className="font-bold text-slate-700">Horas Totais Trabalhadas:</span>
-                        <span className="font-black text-slate-900 ml-2 text-lg">435.00</span>
-                     </div>
-                     <div className="border-t border-slate-100 pt-2">
-                        <span className="font-bold text-slate-700">Horas Totais Perdidas:</span>
-                        <span className="font-black text-slate-900 ml-2 text-lg">11:00</span>
-                     </div>
+                    <div>
+                        <span className="font-bold text-slate-700">Total de Funcionários:</span>
+                        <span className="font-black text-slate-900 ml-2 text-lg">{filteredEmployees.length}</span>
+                    </div>
                 </div>
-                
+
                 <div className="space-y-2">
-                     <div className="flex justify-between items-center text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">
+                    <div className="flex justify-between items-center text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">
                         Base Legal: Lei Geral do Trabalho
-                     </div>
-                     <div className="flex justify-between items-center text-red-600 font-bold bg-red-50 p-2 rounded border border-red-100">
-                        <span>Desconto Faltas Injustificadas:</span>
+                    </div>
+                    <div className="flex justify-between items-center text-red-600 font-bold bg-red-50 p-2 rounded border border-red-100">
+                        <span>Desconto Faltas Injustificadas (Est.):</span>
                         <span>- {totalDeductions.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kz</span>
-                     </div>
-                      <div className="flex justify-between items-center bg-blue-50 p-3 rounded border border-blue-100 mt-2">
-                        <span className="font-bold text-blue-900 uppercase text-xs">Total de Vencimentos a Pagar:</span>
+                    </div>
+                    <div className="flex justify-between items-center bg-blue-50 p-3 rounded border border-blue-100 mt-2">
+                        <span className="font-bold text-blue-900 uppercase text-xs">Total Estimado a Pagar:</span>
                         <span className="font-black text-blue-900 text-xl">{totalToPay.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kz</span>
-                     </div>
+                    </div>
                 </div>
             </div>
         </div>
