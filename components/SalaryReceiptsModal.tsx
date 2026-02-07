@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Company, SalarySlip, Employee } from '../types';
 import { formatCurrency, roundToNearestBank, calculateINSS, calculateIRT } from '../utils';
-import { Printer, Download, X, Search, User, FileText, Save, RefreshCw } from 'lucide-react';
+import { Printer, Download, X, Search, User, FileText, Save, RefreshCw, MoreVertical, UserX } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -11,11 +11,14 @@ interface SalaryReceiptsModalProps {
     employees: Employee[];
     onClose: () => void;
     onSave: (finalSlips: SalarySlip[]) => void; // Save to database
+    onDismiss?: (employee: Employee) => void;
 }
 
-const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payroll, employees, onClose, onSave }) => {
+const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payroll, employees, onClose, onSave, onDismiss }) => {
     const [selectedSlipId, setSelectedSlipId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
     // Local state for editable slips
     const [editableSlips, setEditableSlips] = useState<SalarySlip[]>([]);
@@ -28,11 +31,18 @@ const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payr
     }, [payroll]);
 
     const filteredSlips = useMemo(() => {
-        return editableSlips.filter(slip => {
+        let slips = editableSlips.filter(slip => {
             const matchesSearch = slip.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
             return matchesSearch;
         });
-    }, [editableSlips, searchTerm]);
+
+        // Se houver funcionários selecionados, mostrar apenas esses
+        if (selectedEmployeeIds.size > 0) {
+            slips = slips.filter(slip => selectedEmployeeIds.has(slip.employeeId));
+        }
+
+        return slips;
+    }, [editableSlips, searchTerm, selectedEmployeeIds]);
 
     const activeSlip = useMemo(() => {
         if (filteredSlips.length === 0) return null;
@@ -321,24 +331,78 @@ const SalaryReceiptsModal: React.FC<SalaryReceiptsModalProps> = ({ company, payr
                     </div>
 
                     <div className="flex-1 overflow-y-auto">
-                        {filteredSlips.map(slip => (
-                            <button
-                                key={slip.id}
-                                onClick={() => setSelectedSlipId(slip.id)}
-                                className={`w-full text-left p-4 border-b border-slate-100 transition-all flex items-center gap-3 ${(selectedSlipId === slip.id || (!selectedSlipId && activeSlip?.id === slip.id))
-                                    ? 'bg-blue-50 border-l-4 border-l-blue-600'
-                                    : 'hover:bg-slate-50'
-                                    }`}
-                            >
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${(selectedSlipId === slip.id || (!selectedSlipId && activeSlip?.id === slip.id)) ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                                    {slip.employeeName.charAt(0)}
+                        {filteredSlips.map(slip => {
+                            const isSelected = selectedEmployeeIds.has(slip.employeeId);
+                            return (
+                                <div key={slip.id} className="flex items-center gap-2 border-b border-slate-100">
+                                    <div className="p-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => {
+                                                const newSet = new Set(selectedEmployeeIds);
+                                                if (isSelected) {
+                                                    newSet.delete(slip.employeeId);
+                                                } else {
+                                                    newSet.add(slip.employeeId);
+                                                }
+                                                setSelectedEmployeeIds(newSet);
+                                            }}
+                                            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={() => setSelectedSlipId(slip.id)}
+                                        className={`flex-1 text-left p-4 pl-2 transition-all flex items-center gap-3 ${(selectedSlipId === slip.id || (!selectedSlipId && activeSlip?.id === slip.id))
+                                            ? 'bg-blue-50'
+                                            : ''
+                                            }`}
+                                    >
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${(selectedSlipId === slip.id || (!selectedSlipId && activeSlip?.id === slip.id)) ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                            {slip.employeeName.charAt(0)}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-slate-800 text-xs uppercase truncate">{slip.employeeName}</div>
+                                            <div className="text-[10px] text-slate-500 font-bold">{formatCurrency(slip.netTotal)}</div>
+                                        </div>
+                                    </button>
+
+                                    {/* Options Button */}
+                                    <div className="pr-2 relative">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenMenuId(openMenuId === slip.id ? null : slip.id);
+                                            }}
+                                            className={`p-2 rounded-lg transition-all ${openMenuId === slip.id ? 'bg-slate-200 text-slate-800' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
+                                        >
+                                            <MoreVertical size={16} />
+                                        </button>
+
+                                        {/* Dropdown Menu */}
+                                        {openMenuId === slip.id && (
+                                            <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-xl border border-slate-200 z-[200] animate-in fade-in zoom-in-95 origin-top-right overflow-hidden">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const emp = employees.find(e => e.id === slip.employeeId);
+                                                        if (emp && onDismiss) {
+                                                            onDismiss(emp);
+                                                            setOpenMenuId(null);
+                                                        } else {
+                                                            alert("Funcionalidade indisponível para este item.");
+                                                        }
+                                                    }}
+                                                    className="w-full text-left px-4 py-3 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 uppercase"
+                                                >
+                                                    <UserX size={14} /> Demitir Funcionário
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <div className="font-bold text-slate-800 text-xs uppercase truncate">{slip.employeeName}</div>
-                                    <div className="text-[10px] text-slate-500 font-bold">{formatCurrency(slip.netTotal)}</div>
-                                </div>
-                            </button>
-                        ))}
+                            );
+                        })}
                     </div>
 
                     <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-2">

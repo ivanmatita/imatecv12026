@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Employee, WorkLocation, Profession } from '../types';
 import { formatCurrency, formatDate } from '../utils';
 import { Search, Printer, Plus, Edit, Trash2, User, Eye } from 'lucide-react';
+import EmployeeOptionsMenu from './EmployeeOptionsMenu';
 
 interface EmployeeListPageProps {
     employees: Employee[];
@@ -12,6 +13,11 @@ interface EmployeeListPageProps {
     onDelete?: (empId: string) => void;
     onViewDetails?: (emp: Employee) => void;
     onCreate?: () => void;
+    onDismiss?: (emp: Employee) => void;
+    onIssueContract?: (emp: Employee) => void;
+    onViewPersonalFile?: (emp: Employee) => void;
+    onReadmit?: (emp: Employee) => void;
+    onManageUniforms?: (emp: Employee) => void;
 }
 
 const EmployeeListPage: React.FC<EmployeeListPageProps> = ({
@@ -22,7 +28,12 @@ const EmployeeListPage: React.FC<EmployeeListPageProps> = ({
     onEdit,
     onDelete,
     onViewDetails,
-    onCreate
+    onCreate,
+    onDismiss,
+    onIssueContract,
+    onViewPersonalFile,
+    onReadmit,
+    onManageUniforms
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [departmentFilter, setDepartmentFilter] = useState('ALL');
@@ -313,24 +324,15 @@ const EmployeeListPage: React.FC<EmployeeListPageProps> = ({
                                             {/* Actions */}
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center justify-center gap-1">
-                                                    {onViewDetails && (
-                                                        <button
-                                                            onClick={() => onViewDetails(emp)}
-                                                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition"
-                                                            title="Ver Detalhes"
-                                                        >
-                                                            <Eye size={16} />
-                                                        </button>
-                                                    )}
-                                                    {onEdit && (
-                                                        <button
-                                                            onClick={() => onEdit(emp)}
-                                                            className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition"
-                                                            title="Editar"
-                                                        >
-                                                            <Edit size={16} />
-                                                        </button>
-                                                    )}
+                                                    <EmployeeOptionsMenu
+                                                        employee={emp}
+                                                        onDismiss={onDismiss || (() => { })}
+                                                        onViewProfile={onEdit || (() => { })}
+                                                        onViewPersonalFile={onViewPersonalFile || (() => { })}
+                                                        onReadmit={onReadmit || (() => { })}
+                                                        onIssueContract={onIssueContract || (() => { })}
+                                                        onManageUniforms={onManageUniforms || (() => { })}
+                                                    />
                                                     {onDelete && (
                                                         <button
                                                             onClick={() => {
@@ -338,8 +340,8 @@ const EmployeeListPage: React.FC<EmployeeListPageProps> = ({
                                                                     onDelete(emp.id);
                                                                 }
                                                             }}
-                                                            className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition"
-                                                            title="Eliminar"
+                                                            className="p-2 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                                            title="Eliminar Registo"
                                                         >
                                                             <Trash2 size={16} />
                                                         </button>

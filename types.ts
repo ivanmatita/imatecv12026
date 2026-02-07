@@ -128,10 +128,16 @@ export type ViewState =
   | 'HR_EMPLOYEES'
   | 'HR_PERFORMANCE'
   | 'HR_CONTRACT_ISSUE'
+  | 'HR_CONTRACTS'
   | 'HR_IRT_TABLE'
   | 'HR_TRANSFER_ORDERS'
   | 'HR_ATTENDANCE_MAP'
   | 'HR_SALARY_PROC'
+  | 'HR_PERSONAL_REGISTRATION'
+  | 'HR_MAPS'
+  | 'HR_EMPLOYEE_LIST'
+  | 'HR_WORK_CARD'
+  | 'HR_LABOR_REGISTRATION'
   | 'SETTINGS'
   | 'SETTINGS_TAX_TABLE'
   | 'POS_GROUP'
@@ -280,8 +286,13 @@ export interface Employee {
   baseSalary: number;
   complementSalary?: number;
   status: 'Active' | 'Terminated' | 'OnLeave';
+  dismissalDate?: string;
+  dismissalReason?: string;
+  dismissedBy?: string;
   admissionDate: string;
   terminationDate?: string;
+  terminationReason?: string;
+  terminatedBy?: string;
   contractType: 'Determinado' | 'Indeterminado' | 'Estagio';
   contractClauses?: string[];
   isCashier?: boolean;

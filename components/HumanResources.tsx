@@ -24,11 +24,14 @@ import Employees from './Employees';
 import TransferOrderModal from './TransferOrderModal';
 import ProcessSalary from './ProcessSalary';
 import SalaryProcessingModal from './SalaryProcessingModal';
+import DismissEmployeeModal from './DismissEmployeeModal';
+import IRTTableManager from './IRTTableManager';
 
 import DetailedAttendanceGrid from './DetailedAttendanceGrid';
 import AttendanceMapPage from './AttendanceMapPage';
 import EmployeeListPage from './EmployeeListPage';
 import EmployeeForm from './EmployeeForm';
+import ContractManagement from './ContractManagement';
 import {
     saveSalarySlip, getSalarySlips, saveAttendance, getAttendance,
     saveTransferOrder, getTransferOrders, saveEmployee, deleteEmployee
@@ -110,6 +113,20 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     const [processingSlips, setProcessingSlips] = useState<SalarySlip[]>([]);
     const [isReceiptsEditable, setIsReceiptsEditable] = useState(false);
 
+    // New HR Features State
+    const [showIRTTable, setShowIRTTable] = useState(false);
+    const [showDismissModal, setShowDismissModal] = useState(false);
+    const [employeeToDismiss, setEmployeeToDismiss] = useState<Employee | null>(null);
+
+    // Contract Management State
+    const [showContractManagement, setShowContractManagement] = useState(false);
+
+    // Auto-open contract management if needed
+    useEffect(() => {
+        // This would be triggered from the menu, we'll use a different approach
+        // For now, keep it simple
+    }, []);
+
     const handleCreateEmployee = () => {
         setEmployeeToEdit(undefined);
         setShowEmployeeForm(true);
@@ -133,13 +150,64 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
     };
 
     const handleDeleteEmployeeInternal = async (empId: string) => {
-        if (!confirm("Tem certeza que deseja eliminar este colaborador?")) return;
+        if (!confirm("Tem certeza que deseja eliminar este registo de colaborador? Esta acção é irreversível e deve ser usada apenas para erros de cadastro.")) return;
         try {
             await deleteEmployee(empId);
             if (onDeleteEmployee) onDeleteEmployee(empId);
         } catch (e) {
             console.error("Erro ao eliminar:", e);
             alert("Erro ao eliminar colaborador.");
+        }
+    };
+
+    const handleDismissClick = (emp: Employee) => {
+        setEmployeeToDismiss(emp);
+        setShowDismissModal(true);
+    };
+
+    const handleConfirmDismiss = async (empId: string, dismissalData: { dismissalDate: string; dismissedBy: string; reason: string }) => {
+        try {
+            const emp = employees.find(e => e.id === empId);
+            if (!emp) return;
+
+            const updatedEmp: Employee = {
+                ...emp,
+                status: 'Terminated',
+                dismissalDate: dismissalData.dismissalDate,
+                dismissalReason: dismissalData.reason,
+                dismissedBy: dismissalData.dismissedBy
+            };
+
+            await saveEmployee(updatedEmp);
+            onSaveEmployee(updatedEmp);
+
+            setShowDismissModal(false);
+            setEmployeeToDismiss(null);
+            alert(`Colaborador ${emp.name} demitido com sucesso.`);
+        } catch (e) {
+            console.error("Erro ao demitir:", e);
+            alert("Erro ao processar demissão.");
+        }
+    };
+
+    const handleReadmit = async (emp: Employee) => {
+        if (!confirm(`Deseja readmitir ${emp.name}?`)) return;
+
+        const updatedEmp: Employee = {
+            ...emp,
+            status: 'Active',
+            dismissalDate: undefined,
+            dismissalReason: undefined,
+            dismissedBy: undefined
+        };
+
+        try {
+            await saveEmployee(updatedEmp);
+            onSaveEmployee(updatedEmp);
+            alert(`Colaborador ${emp.name} readmitido com sucesso.`);
+        } catch (e) {
+            console.error(e);
+            alert("Erro ao readmitir colaborador.");
         }
     };
 
@@ -452,6 +520,8 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                     <button onClick={() => setActiveTab('COLABORADORES')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'COLABORADORES' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Colaboradores</button>
                     <button onClick={() => setActiveTab('PROCESSAMENTO')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'PROCESSAMENTO' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Processamento</button>
                     <div className="w-px h-8 bg-slate-200 mx-2"></div>
+                    <button onClick={() => setShowContractManagement(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Briefcase size={14} className="text-indigo-600" /> Gestão de Contratos</button>
+                    <button onClick={() => setShowIRTTable(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Calculator size={14} className="text-emerald-600" /> Tabela IRT</button>
                     <button onClick={() => { setTransferOrderParams({ viewMode: 'LIST' }); setShowTransferOrder(true); }} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><ArrowRightLeft size={14} className="text-green-600" /> Ordem de Transferência</button>
                     <button onClick={() => { setIsReceiptsEditable(false); setShowReceipts(true); }} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Printer size={14} className="text-purple-600" /> Recibos de Salário</button>
                     <button onClick={() => setShowGeneralSalaryMap(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Table size={14} className="text-blue-600" /> Mapa Geral IRT/INSS</button>
@@ -474,7 +544,26 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                     <>
                         {activeTab === 'ASSIDUIDADE' && renderContent()}
                         {activeTab === 'PROFISSÕES' && <ProfessionManager professions={professions} onSave={onSaveProfession} onDelete={onDeleteProfession} />}
-                        {activeTab === 'COLABORADORES' && <EmployeeListPage employees={employees} onSaveEmployee={onSaveEmployee} workLocations={workLocations} professions={professions} onCreate={handleCreateEmployee} onEdit={handleEditEmployee} onDelete={handleDeleteEmployeeInternal} onViewDetails={handleEditEmployee} />}
+                        {activeTab === 'COLABORADORES' && (
+                            <EmployeeListPage
+                                employees={employees}
+                                onSaveEmployee={onSaveEmployee}
+                                workLocations={workLocations}
+                                professions={professions}
+                                onCreate={handleCreateEmployee}
+                                onEdit={handleEditEmployee}
+                                onDelete={handleDeleteEmployeeInternal}
+                                onViewDetails={handleEditEmployee}
+
+                                onDismiss={handleDismissClick}
+                                onReadmit={handleReadmit}
+                                onIssueContract={(emp) => {
+                                    setShowContractManagement(true);
+                                }}
+                                onViewPersonalFile={() => alert("Funcionalidade em desenvolvimento")}
+                                onManageUniforms={() => alert("Funcionalidade em desenvolvimento")}
+                            />
+                        )}
                         {activeTab === 'PROCESSAMENTO' && (
                             <ProcessSalary
                                 employees={employees}
@@ -519,6 +608,7 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                                 employees={employees}
                                 onClose={() => setShowReceipts(false)}
                                 onSave={handleSaveBatchSlips}
+                                onDismiss={handleDismissClick}
                             />
                         )}
                         {showProcessingModal && <SalaryProcessingModal company={company} employees={employees} processingMonth={processingMonth} processingYear={processingYear} initialEmployeeId={selectedEmployeeForModal} initialData={processingInitialData} onProcess={(slip) => { handleProcessSalaryCallback([slip]); }} onClose={() => { setShowProcessingModal(false); setSelectedEmployeeForModal(null); setProcessingInitialData(null); if (onToggleSidebarTheme) onToggleSidebarTheme(false); }} />}
@@ -526,6 +616,25 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                 )}
             </div>
             {showEmployeeForm && <EmployeeForm initialData={employeeToEdit} onSave={handleSaveEmployeeInternal} onCancel={() => setShowEmployeeForm(false)} workLocations={workLocations} professions={professions} />}
+            {showContractManagement && (
+                <div className="fixed inset-0 z-[200] bg-white">
+                    <ContractManagement
+                        employees={employees}
+                        company={company}
+                        onClose={() => setShowContractManagement(false)}
+                    />
+                </div>
+            )}
+            {showIRTTable && (
+                <IRTTableManager onClose={() => setShowIRTTable(false)} />
+            )}
+            {showDismissModal && employeeToDismiss && (
+                <DismissEmployeeModal
+                    employee={employeeToDismiss}
+                    onClose={() => setShowDismissModal(false)}
+                    onConfirm={handleConfirmDismiss}
+                />
+            )}
         </div>
     );
 };

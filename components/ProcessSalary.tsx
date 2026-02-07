@@ -3,6 +3,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Employee, SalarySlip, CashRegister } from '../types';
 import { generateId, formatCurrency, formatDate, calculateINSS, calculateIRT, numberToExtenso, roundToNearestBank } from '../utils';
 import { Save, Printer, Trash2, CheckSquare, MoreVertical, X, Calendar, ChevronRight, Calculator, CheckCircle2, ArrowRightLeft, Search, FileDown, Play, ChevronDown } from 'lucide-react';
+import EmployeeOptionsMenu from './EmployeeOptionsMenu';
+import DismissEmployeeModal from './DismissEmployeeModal';
+import UniformsManagement from './UniformsManagement';
 
 interface ProcessSalaryProps {
     employees: Employee[];
@@ -49,6 +52,10 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
     const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
     const [openOptionsMenu, setOpenOptionsMenu] = useState<string | null>(null);
     const [showOtherGratificationsModal, setShowOtherGratificationsModal] = useState<string | null>(null);
+    const [showDismissModal, setShowDismissModal] = useState(false);
+    const [employeeToDismiss, setEmployeeToDismiss] = useState<Employee | null>(null);
+    const [showUniformsModal, setShowUniformsModal] = useState(false);
+    const [employeeForUniforms, setEmployeeForUniforms] = useState<Employee | null>(null);
 
     // Manual Input State
     const [inputValues, setInputValues] = useState<Record<string, {
@@ -215,6 +222,66 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
 
         onProcessPayroll([slip]);
         alert('Salário processado com sucesso!');
+    };
+
+    // Employee Action Handlers
+    const handleDismissEmployee = (emp: Employee) => {
+        setEmployeeToDismiss(emp);
+        setShowDismissModal(true);
+    };
+
+    const handleConfirmDismiss = (employeeId: string, dismissalData: any) => {
+        // Update employee status to Terminated
+        const updatedEmployee = employees.find(e => e.id === employeeId);
+        if (updatedEmployee) {
+            // Atualizar o funcionário com os dados de demissão
+            const dismissedEmployee = {
+                ...updatedEmployee,
+                status: 'Terminated' as const,
+                terminationDate: dismissalData.dismissalDate,
+                terminationReason: dismissalData.reason,
+                terminatedBy: dismissalData.dismissedBy,
+                isActive: false
+            };
+
+            // Em uma implementação real, isso chamaria onSaveEmployee ou similar
+            // Por enquanto, apenas mostramos a confirmação
+            alert(`✅ Funcionário ${updatedEmployee.name} foi demitido com sucesso.\n\n` +
+                `Data de Demissão: ${dismissalData.dismissalDate}\n` +
+                `Motivo: ${dismissalData.reason}\n` +
+                `Mandante: ${dismissalData.dismissedBy}\n\n` +
+                `O funcionário está agora bloqueado de todas as atividades do sistema.`);
+        }
+        setShowDismissModal(false);
+        setEmployeeToDismiss(null);
+    };
+
+    const handleViewProfile = (emp: Employee) => {
+        alert(`Visualizar cadastro de ${emp.name}`);
+        // Navigate to employee profile/edit page
+    };
+
+    const handleViewPersonalFile = (emp: Employee) => {
+        alert(`Visualizar ficha pessoal de ${emp.name}`);
+        // Navigate to personal file page
+    };
+
+    const handleReadmit = (emp: Employee) => {
+        if (confirm(`Deseja readmitir ${emp.name}?`)) {
+            emp.status = 'Active';
+            emp.terminationDate = undefined;
+            alert(`${emp.name} foi readmitido com sucesso!`);
+        }
+    };
+
+    const handleIssueContract = (emp: Employee) => {
+        alert(`Emitir contrato para ${emp.name}`);
+        // Navigate to contract management page
+    };
+
+    const handleManageUniforms = (emp: Employee) => {
+        setEmployeeForUniforms(emp);
+        setShowUniformsModal(true);
     };
 
     return (
@@ -436,38 +503,15 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
                                                         Processar Salário
                                                     </button>
                                                 )}
-                                                <div className="relative">
-                                                    <button
-                                                        onClick={() => setOpenOptionsMenu(openOptionsMenu === emp.id ? null : emp.id)}
-                                                        className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold px-2 py-1.5 rounded shadow-sm transition-colors flex items-center gap-1"
-                                                    >
-                                                        Opções <ChevronDown size={10} />
-                                                    </button>
-                                                    {openOptionsMenu === emp.id && (
-                                                        <div className="absolute right-0 top-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 min-w-[200px] py-1">
-                                                            <button
-                                                                onClick={() => {
-                                                                    if (onShowReceipts) onShowReceipts([emp.id]);
-                                                                    setOpenOptionsMenu(null);
-                                                                }}
-                                                                className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700"
-                                                            >
-                                                                <Printer size={14} className="text-blue-600" />
-                                                                Imprimir Recibo
-                                                            </button>
-                                                            <button
-                                                                onClick={() => {
-                                                                    setShowOtherGratificationsModal(emp.id);
-                                                                    setOpenOptionsMenu(null);
-                                                                }}
-                                                                className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700"
-                                                            >
-                                                                <Calculator size={14} className="text-green-600" />
-                                                                Outras Gratificações
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                <EmployeeOptionsMenu
+                                                    employee={emp}
+                                                    onDismiss={handleDismissEmployee}
+                                                    onViewProfile={handleViewProfile}
+                                                    onViewPersonalFile={handleViewPersonalFile}
+                                                    onReadmit={handleReadmit}
+                                                    onIssueContract={handleIssueContract}
+                                                    onManageUniforms={handleManageUniforms}
+                                                />
                                             </div>
                                         </td>
                                     </tr>
@@ -578,6 +622,29 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Dismiss Employee Modal */}
+            {showDismissModal && employeeToDismiss && (
+                <DismissEmployeeModal
+                    employee={employeeToDismiss}
+                    onClose={() => {
+                        setShowDismissModal(false);
+                        setEmployeeToDismiss(null);
+                    }}
+                    onConfirm={handleConfirmDismiss}
+                />
+            )}
+
+            {/* Uniforms Management Modal */}
+            {showUniformsModal && employeeForUniforms && (
+                <UniformsManagement
+                    employee={employeeForUniforms}
+                    onClose={() => {
+                        setShowUniformsModal(false);
+                        setEmployeeForUniforms(null);
+                    }}
+                />
             )}
         </div>
     );

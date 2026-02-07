@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Plus, Trash2, Edit3, X } from 'lucide-react';
+import { Save, Plus, Trash2, Edit3, X, ArrowLeft } from 'lucide-react';
 
 interface IRTBracket {
     id: string;
@@ -98,22 +98,26 @@ const IRTTable: React.FC<IRTTableProps> = ({ onClose }) => {
                 {/* Header */}
                 <div className="bg-gradient-to-r from-blue-900 to-slate-800 p-6 rounded-t-lg shadow-md">
                     <div className="flex justify-between items-center">
-                        <div>
-                            <h1 className="text-2xl font-bold text-white uppercase tracking-wide">
-                                Tabela de IRT - Imposto sobre Rendimento do Trabalho
-                            </h1>
-                            <p className="text-blue-200 text-sm mt-1">
-                                Configuração dos escalões de IRT conforme legislação angolana
-                            </p>
+                        <div className="flex items-center gap-4">
+                            {onClose && (
+                                <button
+                                    onClick={onClose}
+                                    className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors font-bold"
+                                    title="Voltar"
+                                >
+                                    <ArrowLeft size={20} />
+                                    Voltar
+                                </button>
+                            )}
+                            <div>
+                                <h1 className="text-2xl font-bold text-white uppercase tracking-wide">
+                                    Tabela de IRT - Imposto sobre Rendimento do Trabalho
+                                </h1>
+                                <p className="text-blue-200 text-sm mt-1">
+                                    Configuração dos escalões de IRT conforme legislação angolana
+                                </p>
+                            </div>
                         </div>
-                        {onClose && (
-                            <button
-                                onClick={onClose}
-                                className="text-white hover:bg-white/20 p-2 rounded transition-colors"
-                            >
-                                <X size={24} />
-                            </button>
-                        )}
                     </div>
                 </div>
 

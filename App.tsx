@@ -25,6 +25,12 @@ import Agribusiness from './components/Agribusiness';
 import ChurchManagement from './components/ChurchManagement';
 import AttendanceMapPage from './components/AttendanceMapPage';
 import IRTTable from './components/IRTTable';
+import ContractManagement from './components/ContractManagement';
+import PersonalRegistration from './components/PersonalRegistration';
+import HRMaps from './components/HRMaps';
+import EmployeeListPage from './components/EmployeeListPage';
+import WorkCard from './components/WorkCard';
+import LaborRegistration from './components/LaborRegistration';
 
 import {
     Invoice, InvoiceStatus, ViewState, Client, Product, InvoiceType,
@@ -720,8 +726,26 @@ const App: React.FC = () => {
                     onToggleSidebarTheme={(white) => setIsSidebarWhite(white)}
                     onToggleSidebar={(open) => setIsSidebarOpen(open)}
                 />;
+            case 'HR_CONTRACTS':
+                return <ContractManagement
+                    employees={employees}
+                    company={MOCK_COMPANY}
+                    onClose={() => setCurrentView('HR')}
+                />;
+            case 'HR_PERSONAL_REGISTRATION':
+                return <PersonalRegistration onClose={() => setCurrentView('HR')} />;
+            case 'HR_MAPS':
+                return <HRMaps onClose={() => setCurrentView('HR')} />;
+            case 'HR_EMPLOYEE_LIST':
+                return <EmployeeListPage onClose={() => setCurrentView('HR')} />;
+            case 'HR_WORK_CARD':
+                return <WorkCard onClose={() => setCurrentView('HR')} />;
+            case 'HR_LABOR_REGISTRATION':
+                return <LaborRegistration onClose={() => setCurrentView('HR')} />;
             case 'HR_IRT_TABLE':
-                return <IRTTable />;
+                // Abrir em nova aba
+                window.open('/irt-table.html', '_blank');
+                return null;
             case 'AGRIBUSINESS':
                 return <Agribusiness />;
             case 'CHURCH_MANAGEMENT':
