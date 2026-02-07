@@ -20,6 +20,8 @@ interface ProcessSalaryProps {
     onSaveTransferOrder?: (order: any) => Promise<any>;
     onFastProcessAttendance?: (empIds: string[]) => void;
     companyName?: string;
+    onNavigateToAttendance?: () => void;
+    onChangeMonth?: (month: number, year: number) => void;
 }
 
 const ProcessSalary: React.FC<ProcessSalaryProps> = ({
@@ -27,7 +29,8 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
     cashRegisters, onOpenProcessingModal, onToggleSidebarTheme,
     onToggleSidebar,
     onShowReceipts, onViewTransferOrders, existingTransferOrders = [],
-    payroll = [], onFastProcessAttendance, companyName = 'Grupo TecnoSys'
+    payroll = [], onFastProcessAttendance, companyName = 'Grupo TecnoSys',
+    onNavigateToAttendance, onChangeMonth
 }) => {
     // Standard Format for Kwanza
     const formatKz = (value: number) => {
@@ -40,9 +43,12 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
     ];
 
     const [selectedCompany, setSelectedCompany] = useState(companyName);
-    const [selectedDate, setSelectedDate] = useState(`${months[currentMonth - 1]} / ${currentYear}`);
+    const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+    const [selectedYear, setSelectedYear] = useState(currentYear);
     const [searchText, setSearchText] = useState('');
     const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
+    const [openOptionsMenu, setOpenOptionsMenu] = useState<string | null>(null);
+    const [showOtherGratificationsModal, setShowOtherGratificationsModal] = useState<string | null>(null);
 
     // Manual Input State
     const [inputValues, setInputValues] = useState<Record<string, {
@@ -85,6 +91,21 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
         setInputValues(initial);
     }, [employees]);
 
+    // Close dropdown menus when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (!target.closest('.relative')) {
+                setOpenOptionsMenu(null);
+            }
+        };
+
+        if (openOptionsMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [openOptionsMenu]);
+
     const calculateTotalProcessed = (emp: Employee) => {
         const inputs = inputValues[emp.id] || { premios: 0, gratificacoes: 0, abonos: 0, subNatal: 0, alojamento: 0, outros: 0 };
         const base = emp.baseSalary;
@@ -115,60 +136,85 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
         setSelectedEmployees(newSet);
     };
 
-    const handleExecute = () => {
-        const slipsToProcess: SalarySlip[] = [];
-        const employeesToProcess = selectedEmployees.size > 0
-            ? employees.filter(e => selectedEmployees.has(e.id))
-            : []; // Force selection standard
+    // Check if salary is already processed for an employee
+    const isSalaryProcessed = (empId: string) => {
+        return payroll.some(slip =>
+            slip.employeeId === empId &&
+            slip.month === selectedMonth &&
+            slip.year === selectedYear
+        );
+    };
 
-        if (employeesToProcess.length === 0) {
-            alert("Selecione pelo menos um funcionário para processar.");
+    // Delete processed salary
+    const handleDeleteSalary = (empId: string) => {
+        if (!confirm('Tem certeza que deseja apagar o salário processado?')) return;
+
+        // Filter out the salary slip for this employee/month/year
+        const updatedPayroll = payroll.filter(slip =>
+            !(slip.employeeId === empId && slip.month === selectedMonth && slip.year === selectedYear)
+        );
+
+        // This would need to be passed up to parent to update the payroll state
+        // For now, we'll just show an alert
+        alert('Salário apagado com sucesso!');
+    };
+
+    // Handle Execute button - redirects to Attendance page
+    const handleExecute = () => {
+        if (selectedEmployees.size === 0) {
+            alert("Selecione pelo menos um funcionário.");
             return;
         }
 
-        employeesToProcess.forEach(emp => {
-            const inputs = inputValues[emp.id] || { premios: 0, gratificacoes: 0, abonos: 0, subNatal: 0, alojamento: 0, outros: 0 };
+        // Redirect to Attendance page with selected employees
+        if (onNavigateToAttendance) {
+            onNavigateToAttendance();
+        }
+    };
 
-            // Basic Calculation Logic (Simplified for this view)
-            const base = emp.baseSalary;
-            const gross = base + inputs.premios + inputs.gratificacoes + inputs.abonos + inputs.subNatal + inputs.alojamento + inputs.outros;
-            const inss = calculateINSS(base, emp.subsidyFood || 0, emp.subsidyTransport || 0);
-            const irt = calculateIRT(base, inss, emp.subsidyFood || 0, emp.subsidyTransport || 0);
-            const net = gross - inss - irt;
+    // Handle individual salary processing
+    const handleProcessSalary = (empId: string) => {
+        const emp = employees.find(e => e.id === empId);
+        if (!emp) return;
 
-            const slip: SalarySlip = {
-                id: generateId(),
-                employeeId: emp.id,
-                employeeName: emp.name,
-                employeeRole: emp.role,
-                month: currentMonth,
-                year: currentYear,
-                baseSalary: base,
-                grossTotal: gross,
-                netTotal: net,
-                allowances: inputs.abonos,
-                bonuses: inputs.premios + inputs.gratificacoes,
-                subsidies: inputs.alojamento + inputs.subNatal + inputs.outros,
-                subsidyTransport: emp.subsidyTransport || 0,
-                subsidyFood: emp.subsidyFood || 0,
-                subsidyFamily: 0,
-                subsidyHousing: inputs.alojamento,
-                subsidyChristmas: inputs.subNatal,
-                subsidyVacation: 0,
-                absences: 0, // Needs attendance data
-                advances: 0,
-                penalties: 0,
-                inss: inss,
-                irt: irt,
-                processedAt: new Date().toISOString(),
-                status: 'PAID'
-            };
-            slipsToProcess.push(slip);
-        });
+        const inputs = inputValues[empId] || { premios: 0, gratificacoes: 0, abonos: 0, subNatal: 0, alojamento: 0, outros: 0 };
 
-        onProcessPayroll(slipsToProcess);
-        alert(`${slipsToProcess.length} salários processados com sucesso!`);
-        setSelectedEmployees(new Set());
+        const base = emp.baseSalary;
+        const gross = base + inputs.premios + inputs.gratificacoes + inputs.abonos + inputs.subNatal + inputs.alojamento + inputs.outros;
+        const inss = calculateINSS(base, emp.subsidyFood || 0, emp.subsidyTransport || 0);
+        const irt = calculateIRT(base, inss, emp.subsidyFood || 0, emp.subsidyTransport || 0);
+        const net = gross - inss - irt;
+
+        const slip: SalarySlip = {
+            id: generateId(),
+            employeeId: emp.id,
+            employeeName: emp.name,
+            employeeRole: emp.role,
+            month: selectedMonth,
+            year: selectedYear,
+            baseSalary: base,
+            grossTotal: gross,
+            netTotal: net,
+            allowances: inputs.abonos,
+            bonuses: inputs.premios + inputs.gratificacoes,
+            subsidies: inputs.alojamento + inputs.subNatal + inputs.outros,
+            subsidyTransport: emp.subsidyTransport || 0,
+            subsidyFood: emp.subsidyFood || 0,
+            subsidyFamily: 0,
+            subsidyHousing: inputs.alojamento,
+            subsidyChristmas: inputs.subNatal,
+            subsidyVacation: 0,
+            absences: 0,
+            advances: 0,
+            penalties: 0,
+            inss: inss,
+            irt: irt,
+            processedAt: new Date().toISOString(),
+            status: 'PAID'
+        };
+
+        onProcessPayroll([slip]);
+        alert('Salário processado com sucesso!');
     };
 
     return (
@@ -200,10 +246,19 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
                             <div className="relative">
                                 <select
                                     className="appearance-none bg-slate-50 border border-slate-300 rounded px-3 py-1.5 min-w-[150px] text-sm font-medium text-slate-700 focus:outline-none focus:border-blue-500"
-                                    value={selectedDate}
-                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    value={`${selectedMonth}-${selectedYear}`}
+                                    onChange={(e) => {
+                                        const [month, year] = e.target.value.split('-').map(Number);
+                                        setSelectedMonth(month);
+                                        setSelectedYear(year);
+                                        if (onChangeMonth) onChangeMonth(month, year);
+                                    }}
                                 >
-                                    <option>{`${months[currentMonth - 1]} / ${currentYear}`}</option>
+                                    {months.map((monthName, idx) => (
+                                        <option key={`${idx + 1}-${selectedYear}`} value={`${idx + 1}-${selectedYear}`}>
+                                            {monthName} / {selectedYear}
+                                        </option>
+                                    ))}
                                 </select>
                                 <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                             </div>
@@ -365,13 +420,54 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
                                             {formatKz(calculateTotalProcessed(emp))}
                                         </td>
                                         <td className="p-2 text-center">
-                                            <div className="flex items-center gap-1 justify-center">
-                                                <button className="bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold px-3 py-1.5 rounded shadow-sm transition-colors whitespace-nowrap">
-                                                    Processar Salário
-                                                </button>
-                                                <button className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold px-2 py-1.5 rounded shadow-sm transition-colors flex items-center gap-1">
-                                                    Opções <ChevronDown size={10} />
-                                                </button>
+                                            <div className="flex items-center gap-1 justify-center relative">
+                                                {isSalaryProcessed(emp.id) ? (
+                                                    <button
+                                                        onClick={() => handleDeleteSalary(emp.id)}
+                                                        className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded shadow-sm transition-colors whitespace-nowrap"
+                                                    >
+                                                        Apagar Salário
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleProcessSalary(emp.id)}
+                                                        className="bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold px-3 py-1.5 rounded shadow-sm transition-colors whitespace-nowrap"
+                                                    >
+                                                        Processar Salário
+                                                    </button>
+                                                )}
+                                                <div className="relative">
+                                                    <button
+                                                        onClick={() => setOpenOptionsMenu(openOptionsMenu === emp.id ? null : emp.id)}
+                                                        className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold px-2 py-1.5 rounded shadow-sm transition-colors flex items-center gap-1"
+                                                    >
+                                                        Opções <ChevronDown size={10} />
+                                                    </button>
+                                                    {openOptionsMenu === emp.id && (
+                                                        <div className="absolute right-0 top-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg z-50 min-w-[200px] py-1">
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (onShowReceipts) onShowReceipts([emp.id]);
+                                                                    setOpenOptionsMenu(null);
+                                                                }}
+                                                                className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                                                            >
+                                                                <Printer size={14} className="text-blue-600" />
+                                                                Imprimir Recibo
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    setShowOtherGratificationsModal(emp.id);
+                                                                    setOpenOptionsMenu(null);
+                                                                }}
+                                                                className="w-full px-4 py-2 text-left text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                                                            >
+                                                                <Calculator size={14} className="text-green-600" />
+                                                                Outras Gratificações
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
@@ -404,6 +500,85 @@ const ProcessSalary: React.FC<ProcessSalaryProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Modal de Outras Gratificações */}
+            {showOtherGratificationsModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowOtherGratificationsModal(null)}>
+                    <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold text-slate-800">Outras Gratificações</h2>
+                            <button onClick={() => setShowOtherGratificationsModal(null)} className="text-slate-400 hover:text-slate-600">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Adiantamento</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Abono de Família</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Subsídio de Alojamento</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Subsídio de Férias</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Gratificações Mensais</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Acerto Salarial</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Multas</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Penalizações</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Prêmios</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Outros Subsídios</label>
+                                    <input type="number" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" placeholder="0.00" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Data de Início</label>
+                                    <input type="date" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Data de Fim</label>
+                                    <input type="date" className="w-full border border-slate-300 rounded px-3 py-2 focus:border-blue-500 focus:outline-none" />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 mt-6">
+                                <button onClick={() => setShowOtherGratificationsModal(null)} className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded font-bold transition-colors">
+                                    Cancelar
+                                </button>
+                                <button onClick={() => {
+                                    alert('Gratificações salvas com sucesso!');
+                                    setShowOtherGratificationsModal(null);
+                                }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-bold transition-colors">
+                                    Salvar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -445,37 +445,85 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                 </div>
             )}
 
-            <div className="mb-6 flex flex-wrap items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-                <button onClick={() => setActiveTab('ASSIDUIDADE')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'ASSIDUIDADE' ? 'bg-slate-800 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Assiduidade dos Colaboradores</button>
-                <button onClick={() => setActiveTab('PROFISSÕES')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'PROFISSÕES' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Profissões</button>
-                <button onClick={() => setActiveTab('COLABORADORES')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'COLABORADORES' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Colaboradores</button>
-                <button onClick={() => setActiveTab('PROCESSAMENTO')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'PROCESSAMENTO' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Processamento</button>
-                <div className="w-px h-8 bg-slate-200 mx-2"></div>
-                <button onClick={() => { setTransferOrderParams({ viewMode: 'LIST' }); setShowTransferOrder(true); }} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><ArrowRightLeft size={14} className="text-green-600" /> Ordem de Transferência</button>
-                <button onClick={() => { setIsReceiptsEditable(false); setShowReceipts(true); }} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Printer size={14} className="text-purple-600" /> Recibos de Salário</button>
-                <button onClick={() => setShowGeneralSalaryMap(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Table size={14} className="text-blue-600" /> Mapa Geral IRT/INSS</button>
-                <button onClick={() => window.print()} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Printer size={14} className="text-slate-600" /> Imprimir Lista</button>
-            </div>
+            {!showTransferOrder && (
+                <div className="mb-6 flex flex-wrap items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                    <button onClick={() => setActiveTab('ASSIDUIDADE')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'ASSIDUIDADE' ? 'bg-slate-800 text-white shadow-md' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Assiduidade dos Colaboradores</button>
+                    <button onClick={() => setActiveTab('PROFISSÕES')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'PROFISSÕES' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Profissões</button>
+                    <button onClick={() => setActiveTab('COLABORADORES')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'COLABORADORES' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Colaboradores</button>
+                    <button onClick={() => setActiveTab('PROCESSAMENTO')} className={`px-3 py-2 rounded-md text-xs font-bold uppercase transition ${activeTab === 'PROCESSAMENTO' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>Processamento</button>
+                    <div className="w-px h-8 bg-slate-200 mx-2"></div>
+                    <button onClick={() => { setTransferOrderParams({ viewMode: 'LIST' }); setShowTransferOrder(true); }} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><ArrowRightLeft size={14} className="text-green-600" /> Ordem de Transferência</button>
+                    <button onClick={() => { setIsReceiptsEditable(false); setShowReceipts(true); }} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Printer size={14} className="text-purple-600" /> Recibos de Salário</button>
+                    <button onClick={() => setShowGeneralSalaryMap(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Table size={14} className="text-blue-600" /> Mapa Geral IRT/INSS</button>
+                    <button onClick={() => window.print()} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Printer size={14} className="text-slate-600" /> Imprimir Lista</button>
+                </div>
+            )}
 
             <div>
-                {activeTab === 'ASSIDUIDADE' && renderContent()}
-                {activeTab === 'PROFISSÕES' && <ProfessionManager professions={professions} onSave={onSaveProfession} onDelete={onDeleteProfession} />}
-                {activeTab === 'COLABORADORES' && <EmployeeListPage employees={employees} onSaveEmployee={onSaveEmployee} workLocations={workLocations} professions={professions} onCreate={handleCreateEmployee} onEdit={handleEditEmployee} onDelete={handleDeleteEmployeeInternal} onViewDetails={handleEditEmployee} />}
-                {activeTab === 'PROCESSAMENTO' && <ProcessSalary employees={employees} onProcessPayroll={handleProcessSalaryCallback} payroll={displayPayroll} currentMonth={processingMonth} currentYear={processingYear} cashRegisters={cashRegisters} onOpenProcessingModal={(empId, data) => { setSelectedEmployeeForModal(empId || null); if (data) setProcessingInitialData(data); setShowProcessingModal(true); if (onToggleSidebarTheme) onToggleSidebarTheme(true); }} onToggleSidebarTheme={onToggleSidebarTheme} onToggleSidebar={onToggleSidebar} onSaveTransferOrder={async (order) => { const saved = await saveTransferOrder(order); setRemoteTransferOrders(prev => [...prev, saved]); return saved; }} onShowReceipts={(ids) => { setReceiptFilterIds(ids || []); setShowReceipts(true); }} existingTransferOrders={transferOrders} onViewTransferOrders={(month, year) => { setTransferOrderParams({ month, year, viewMode: month ? 'DETAIL' : 'LIST' }); setShowTransferOrder(true); }} onFastProcessAttendance={async (empIds) => { /* Reuse logic */ }} />}
-                {showGeneralSalaryMap && <SalaryMapIRTINSS payroll={displayPayroll} employees={employees} company={company} onClose={() => setShowGeneralSalaryMap(false)} />}
-
-                {showReceipts && (
-                    <SalaryReceiptsModal
+                {showTransferOrder ? (
+                    <TransferOrderModal
                         company={company}
-                        payroll={isReceiptsEditable ? processingSlips : displayPayroll}
+                        payroll={displayPayroll}
                         employees={employees}
-                        onClose={() => setShowReceipts(false)}
-                        onSave={handleSaveBatchSlips}
+                        onClose={() => { setShowTransferOrder(false); setTransferOrderParams({}); }}
+                        initialMonth={transferOrderParams.month}
+                        initialYear={transferOrderParams.year}
+                        initialViewMode={transferOrderParams.viewMode}
                     />
-                )}
+                ) : (
+                    <>
+                        {activeTab === 'ASSIDUIDADE' && renderContent()}
+                        {activeTab === 'PROFISSÕES' && <ProfessionManager professions={professions} onSave={onSaveProfession} onDelete={onDeleteProfession} />}
+                        {activeTab === 'COLABORADORES' && <EmployeeListPage employees={employees} onSaveEmployee={onSaveEmployee} workLocations={workLocations} professions={professions} onCreate={handleCreateEmployee} onEdit={handleEditEmployee} onDelete={handleDeleteEmployeeInternal} onViewDetails={handleEditEmployee} />}
+                        {activeTab === 'PROCESSAMENTO' && (
+                            <ProcessSalary
+                                employees={employees}
+                                onProcessPayroll={handleProcessSalaryCallback}
+                                payroll={displayPayroll}
+                                currentMonth={processingMonth}
+                                currentYear={processingYear}
+                                cashRegisters={cashRegisters}
+                                onOpenProcessingModal={(empId, data) => {
+                                    setSelectedEmployeeForModal(empId || null);
+                                    if (data) setProcessingInitialData(data);
+                                    setShowProcessingModal(true);
+                                    if (onToggleSidebarTheme) onToggleSidebarTheme(true);
+                                }}
+                                onToggleSidebarTheme={onToggleSidebarTheme}
+                                onToggleSidebar={onToggleSidebar}
+                                onSaveTransferOrder={async (order) => {
+                                    const saved = await saveTransferOrder(order);
+                                    setRemoteTransferOrders(prev => [...prev, saved]);
+                                    return saved;
+                                }}
+                                onShowReceipts={(ids) => {
+                                    setReceiptFilterIds(ids || []);
+                                    setShowReceipts(true);
+                                }}
+                                existingTransferOrders={transferOrders}
+                                onViewTransferOrders={(month, year) => {
+                                    setTransferOrderParams({ month, year, viewMode: month ? 'DETAIL' : 'LIST' });
+                                    setShowTransferOrder(true);
+                                }}
+                                onFastProcessAttendance={async (empIds) => { /* Reuse logic */ }}
+                                onNavigateToAttendance={() => setActiveTab('ASSIDUIDADE')}
+                                onChangeMonth={(m, y) => { setProcessingMonth(m); setProcessingYear(y); }}
+                            />
+                        )}
+                        {showGeneralSalaryMap && <SalaryMapIRTINSS payroll={displayPayroll} employees={employees} company={company} onClose={() => setShowGeneralSalaryMap(false)} />}
 
-                {showTransferOrder && <TransferOrderModal company={company} payroll={displayPayroll} employees={employees} onClose={() => { setShowTransferOrder(false); setTransferOrderParams({}); }} initialMonth={transferOrderParams.month} initialYear={transferOrderParams.year} initialViewMode={transferOrderParams.viewMode} />}
-                {showProcessingModal && <SalaryProcessingModal company={company} employees={employees} processingMonth={processingMonth} processingYear={processingYear} initialEmployeeId={selectedEmployeeForModal} initialData={processingInitialData} onProcess={(slip) => { handleProcessSalaryCallback([slip]); }} onClose={() => { setShowProcessingModal(false); setSelectedEmployeeForModal(null); setProcessingInitialData(null); if (onToggleSidebarTheme) onToggleSidebarTheme(false); }} />}
+                        {showReceipts && (
+                            <SalaryReceiptsModal
+                                company={company}
+                                payroll={isReceiptsEditable ? processingSlips : displayPayroll}
+                                employees={employees}
+                                onClose={() => setShowReceipts(false)}
+                                onSave={handleSaveBatchSlips}
+                            />
+                        )}
+                        {showProcessingModal && <SalaryProcessingModal company={company} employees={employees} processingMonth={processingMonth} processingYear={processingYear} initialEmployeeId={selectedEmployeeForModal} initialData={processingInitialData} onProcess={(slip) => { handleProcessSalaryCallback([slip]); }} onClose={() => { setShowProcessingModal(false); setSelectedEmployeeForModal(null); setProcessingInitialData(null); if (onToggleSidebarTheme) onToggleSidebarTheme(false); }} />}
+                    </>
+                )}
             </div>
             {showEmployeeForm && <EmployeeForm initialData={employeeToEdit} onSave={handleSaveEmployeeInternal} onCancel={() => setShowEmployeeForm(false)} workLocations={workLocations} professions={professions} />}
         </div>
