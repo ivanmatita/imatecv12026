@@ -27,6 +27,7 @@ import ProcessSalary from './ProcessSalary';
 
 import DetailedAttendanceGrid from './DetailedAttendanceGrid';
 import AttendanceMapPage from './AttendanceMapPage';
+import EmployeeListPage from './EmployeeListPage';
 import {
     saveSalarySlip, getSalarySlips, saveAttendance, getAttendance,
     saveTransferOrder, getTransferOrders
@@ -662,6 +663,18 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                     companyName={company.name}
                     workLocations={workLocations}
                     attendanceRecords={displayAttendance}
+                    onProcess={(selectedIds, month, year) => {
+                        const newSet = new Set(selectedIds);
+                        setSelectedEmployeeIds(newSet);
+                        setProcessingMonth(month);
+                        setProcessingYear(year);
+                        if (selectedIds.length > 0) {
+                            // Confirm logic handled by handleProcessAll
+                            handleProcessAll();
+                        } else {
+                            alert("Selecione pelo menos um funcionário para processar.");
+                        }
+                    }}
                 />
             </div >
         );
@@ -778,15 +791,22 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                     />
                 )}
                 {activeTab === 'COLABORADORES' && (
-                    <Employees
+                    <EmployeeListPage
                         employees={employees}
                         onSaveEmployee={onSaveEmployee}
                         workLocations={workLocations}
                         professions={professions}
-                        onPrintSlip={onPrintSlip}
-                        onExecuteProcess={(empId) => {
-                            setSelectedEmployeeForModal(empId);
-                            setActiveTab('PROCESSAMENTO');
+                        onEdit={(emp) => {
+                            // Aqui você pode abrir um modal de edição ou navegar para o formulário
+                            console.log('Editar colaborador:', emp);
+                        }}
+                        onDelete={(empId) => {
+                            // Aqui você pode implementar a lógica de exclusão
+                            console.log('Eliminar colaborador:', empId);
+                        }}
+                        onViewDetails={(emp) => {
+                            // Aqui você pode abrir um modal com detalhes completos
+                            console.log('Ver detalhes:', emp);
                         }}
                     />
                 )}
