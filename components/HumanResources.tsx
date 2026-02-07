@@ -32,6 +32,11 @@ import AttendanceMapPage from './AttendanceMapPage';
 import EmployeeListPage from './EmployeeListPage';
 import EmployeeForm from './EmployeeForm';
 import ContractManagement from './ContractManagement';
+import PersonalRegistration from './PersonalRegistration';
+import HRMaps from './HRMaps';
+import WorkCard from './WorkCard';
+import LaborRegistration from './LaborRegistration';
+import UniformsManagement from './UniformsManagement';
 import {
     saveSalarySlip, getSalarySlips, saveAttendance, getAttendance,
     saveTransferOrder, getTransferOrders, saveEmployee, deleteEmployee
@@ -120,6 +125,14 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
 
     // Contract Management State
     const [showContractManagement, setShowContractManagement] = useState(false);
+
+    // New Components State
+    const [showPersonalRegistration, setShowPersonalRegistration] = useState(false);
+    const [employeeForPersonalFile, setEmployeeForPersonalFile] = useState<Employee | null>(null);
+    const [showHRMaps, setShowHRMaps] = useState(false);
+    const [showWorkCard, setShowWorkCard] = useState(false);
+    const [showLaborRegistration, setShowLaborRegistration] = useState(false);
+    const [employeeForUniforms, setEmployeeForUniforms] = useState<Employee | null>(null);
 
     // Auto-open contract management if needed
     useEffect(() => {
@@ -525,6 +538,13 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                     <button onClick={() => { setTransferOrderParams({ viewMode: 'LIST' }); setShowTransferOrder(true); }} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><ArrowRightLeft size={14} className="text-green-600" /> Ordem de Transferência</button>
                     <button onClick={() => { setIsReceiptsEditable(false); setShowReceipts(true); }} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Printer size={14} className="text-purple-600" /> Recibos de Salário</button>
                     <button onClick={() => setShowGeneralSalaryMap(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Table size={14} className="text-blue-600" /> Mapa Geral IRT/INSS</button>
+
+                    {/* New Buttons for requested features */}
+                    <button onClick={() => setShowPersonalRegistration(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><User size={14} className="text-orange-600" /> Cadastro Pessoal</button>
+                    <button onClick={() => setShowHRMaps(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Table size={14} className="text-teal-600" /> Mapas</button>
+                    <button onClick={() => setShowWorkCard(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><FileText size={14} className="text-pink-600" /> Cartão de Trabalho</button>
+                    <button onClick={() => setShowLaborRegistration(true)} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><ClipboardList size={14} className="text-yellow-600" /> Inscrição Laboral</button>
+
                     <button onClick={() => window.print()} className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-md text-xs font-bold uppercase hover:bg-slate-50 transition flex items-center gap-2"><Printer size={14} className="text-slate-600" /> Imprimir Lista</button>
                 </div>
             )}
@@ -560,8 +580,13 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                                 onIssueContract={(emp) => {
                                     setShowContractManagement(true);
                                 }}
-                                onViewPersonalFile={() => alert("Funcionalidade em desenvolvimento")}
-                                onManageUniforms={() => alert("Funcionalidade em desenvolvimento")}
+                                onViewPersonalFile={(emp) => {
+                                    setEmployeeForPersonalFile(emp);
+                                    setShowPersonalRegistration(true);
+                                }}
+                                onManageUniforms={(emp) => {
+                                    setEmployeeForUniforms(emp);
+                                }}
                             />
                         )}
                         {activeTab === 'PROCESSAMENTO' && (
@@ -633,6 +658,40 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
                     employee={employeeToDismiss}
                     onClose={() => setShowDismissModal(false)}
                     onConfirm={handleConfirmDismiss}
+                />
+            )}
+
+            {/* New Component Renders */}
+            {showPersonalRegistration && (
+                <div className="fixed inset-0 z-[200] bg-white overflow-y-auto">
+                    <PersonalRegistration
+                        onClose={() => {
+                            setShowPersonalRegistration(false);
+                            setEmployeeForPersonalFile(null);
+                        }}
+                    // Note: PersonalRegistration content might need update to handle specific employee prop if passed
+                    />
+                </div>
+            )}
+            {showHRMaps && (
+                <div className="fixed inset-0 z-[200] bg-white overflow-y-auto">
+                    <HRMaps onClose={() => setShowHRMaps(false)} />
+                </div>
+            )}
+            {showWorkCard && (
+                <div className="fixed inset-0 z-[200] bg-white overflow-y-auto">
+                    <WorkCard onClose={() => setShowWorkCard(false)} />
+                </div>
+            )}
+            {showLaborRegistration && (
+                <div className="fixed inset-0 z-[200] bg-white overflow-y-auto">
+                    <LaborRegistration onClose={() => setShowLaborRegistration(false)} />
+                </div>
+            )}
+            {employeeForUniforms && (
+                <UniformsManagement
+                    employee={employeeForUniforms}
+                    onClose={() => setEmployeeForUniforms(null)}
                 />
             )}
         </div>
