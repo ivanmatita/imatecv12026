@@ -26,6 +26,7 @@ import TransferOrderModal from './TransferOrderModal';
 import ProcessSalary from './ProcessSalary';
 
 import DetailedAttendanceGrid from './DetailedAttendanceGrid';
+import AttendanceMapPage from './AttendanceMapPage';
 import {
     saveSalarySlip, getSalarySlips, saveAttendance, getAttendance,
     saveTransferOrder, getTransferOrders
@@ -650,31 +651,38 @@ const HumanResources: React.FC<HumanResourcesProps> = ({
             />
         );
 
+        // Use the new AttendanceMapPage for the main tab
+        // Merge remote and prop attendance data
+        const displayAttendance = remoteAttendance.length > 0 ? remoteAttendance : attendance;
+
         return (
             <div className="space-y-4 animate-in fade-in">
-                {/* Header removed and merged into main toolbar */}
-
-                {/* Table with clean design like the image */}
-                {/* Render the Effectivity List with Month Selector */}
-                {renderEffectivityList()}
+                <AttendanceMapPage
+                    employees={employees}
+                    companyName={company.name}
+                    workLocations={workLocations}
+                    attendanceRecords={displayAttendance}
+                />
             </div >
         );
     };
 
     return (
         <div className="p-6 bg-slate-50 min-h-screen">
-            {/* Simple header */}
-            <div className="mb-6 flex flex-col md:flex-row justify-between md:items-center gap-4">
-                <div>
-                    <button
-                        onClick={() => window.history.back()}
-                        className="flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-2"
-                    >
-                        <ArrowLeft size={20} />
-                    </button>
-                    <h1 className="text-2xl font-bold text-slate-800">CLASSIFICADOR SALARIAL</h1>
+            {/* Simple header - Only show if not in Assiduidade (which has its own header) */}
+            {activeTab !== 'ASSIDUIDADE' && (
+                <div className="mb-6 flex flex-col md:flex-row justify-between md:items-center gap-4">
+                    <div>
+                        <button
+                            onClick={() => window.history.back()}
+                            className="flex items-center gap-2 text-slate-600 hover:text-slate-800 mb-2"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                        <h1 className="text-2xl font-bold text-slate-800">CLASSIFICADOR SALARIAL</h1>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Unified Toolbar: Tabs + Actions */}
             <div className="mb-6 flex flex-wrap items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">

@@ -129,6 +129,7 @@ export type ViewState =
   | 'HR_PERFORMANCE'
   | 'HR_CONTRACT_ISSUE'
   | 'HR_TRANSFER_ORDERS'
+  | 'HR_ATTENDANCE_MAP'
   | 'HR_SALARY_PROC'
   | 'SETTINGS'
   | 'SETTINGS_TAX_TABLE'
@@ -397,6 +398,8 @@ export interface SalarySlip {
   subsidyFood: number;
   subsidyFamily: number;
   subsidyHousing: number;
+  subsidyChristmas?: number;
+  subsidyVacation?: number;
   absences: number;
   absencesJustified?: number;
   advances: number;
@@ -406,6 +409,10 @@ export interface SalarySlip {
   irt: number;
   netTotal: number;
 
+  id?: string;
+  status?: 'DRAFT' | 'PAID' | 'PENDING';
+  processedAt?: string;
+
   // Proportional Processing Details
   daysWorked?: number;
   daysService?: number;
@@ -414,8 +421,8 @@ export interface SalarySlip {
   overtimeHours?: number;
   lostHours?: number;
   location?: string;
-  month?: number;
-  year?: number;
+  month: number;
+  year: number;
 }
 
 export interface TransferOrder {

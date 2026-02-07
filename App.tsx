@@ -23,6 +23,7 @@ import SaftExport from './components/SaftExport';
 import ManagementReports from './components/ManagementReports';
 import Agribusiness from './components/Agribusiness';
 import ChurchManagement from './components/ChurchManagement';
+import AttendanceMapPage from './components/AttendanceMapPage';
 
 import {
     Invoice, InvoiceStatus, ViewState, Client, Product, InvoiceType,
@@ -660,6 +661,13 @@ const App: React.FC = () => {
                 return <RegularizationMap invoices={invoices} onViewInvoice={(inv) => handleEditInvoice(inv)} />;
             case 'ACCOUNTING_SAFT':
                 return <SaftExport invoices={invoices} purchases={purchases} />;
+            case 'HR_ATTENDANCE_MAP':
+                return <AttendanceMapPage
+                    employees={employees}
+                    companyName={MOCK_COMPANY.name}
+                    workLocations={workLocations}
+                    attendanceRecords={attendance}
+                />;
             case 'HR':
             case 'HR_SALARY_PROC':
                 return <HumanResources
