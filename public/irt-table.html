@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tabela de IRT - Imposto sobre Rendimento do Trabalho</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="module">
+        import React from 'https://esm.sh/react@18';
+        import ReactDOM from 'https://esm.sh/react-dom@18/client';
+
+        const { useState } = React;
+
+        function IRTTableStandalone() {
+            const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+            const [brackets, setBrackets] = useState([
+                { id: '1', minValue: 0, maxValue: 70000, rate: 0, year: currentYear },
+                { id: '2', minValue: 70001, maxValue: 100000, rate: 10, year: currentYear },
+                { id: '3', minValue: 100001, maxValue: 150000, rate: 13, year: currentYear },
+                { id: '4', minValue: 150001, maxValue: 200000, rate: 16, year: currentYear },
+                { id: '5', minValue: 200001, maxValue: 300000, rate: 18, year: currentYear },
+                { id: '6', minValue: 300001, maxValue: 500000, rate: 19, year: currentYear },
+                { id: '7', minValue: 500001, maxValue: null, rate: 20, year: currentYear }
+            ]);
+
+            const formatCurrency = (value) => {
+                if (value === null) return '∞';
+                return value.toLocaleString('pt-AO') + ' Kz';
+            };
+
+            const handleBack = () => {
+                window.close();
+            };
+
+            return React.createElement('div', { className: 'bg-slate-50 min-h-screen p-6' },
+                React.createElement('div', { className: 'max-w-6xl mx-auto' },
+                    // Header
+                    React.createElement('div', { className: 'bg-gradient-to-r from-blue-900 to-slate-800 p-6 rounded-t-lg shadow-md' },
+                        React.createElement('div', { className: 'flex justify-between items-center' },
+                            React.createElement('div', { className: 'flex items-center gap-4' },
+                                React.createElement('button', {
+                                    onClick: handleBack,
+                                    className: 'flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors font-bold'
+                                }, '← Voltar'),
+                                React.createElement('div', null,
+                                    React.createElement('h1', { className: 'text-2xl font-bold text-white uppercase tracking-wide' },
+                                        'Tabela de IRT - Imposto sobre Rendimento do Trabalho'
+                                    ),
+                                    React.createElement('p', { className: 'text-blue-200 text-sm mt-1' },
+                                        'Configuração dos escalões de IRT conforme legislação angolana'
+                                    )
+                                )
+                            )
+                        )
+                    ),
+
+                    // Table
+                    React.createElement('div', { className: 'bg-white border border-slate-200 rounded-b-lg shadow-lg overflow-hidden mt-0' },
+                        React.createElement('table', { className: 'w-full' },
+                            React.createElement('thead', null,
+                                React.createElement('tr', { className: 'bg-slate-800 text-white text-sm uppercase font-bold' },
+                                    React.createElement('th', { className: 'p-4 text-left border-r border-slate-700' }, 'Escalão'),
+                                    React.createElement('th', { className: 'p-4 text-right border-r border-slate-700' }, 'Valor Mínimo (Kz)'),
+                                    React.createElement('th', { className: 'p-4 text-right border-r border-slate-700' }, 'Valor Máximo (Kz)'),
+                                    React.createElement('th', { className: 'p-4 text-center' }, 'Taxa (%)')
+                                )
+                            ),
+                            React.createElement('tbody', { className: 'divide-y divide-slate-200' },
+                                brackets.map((bracket, index) =>
+                                    React.createElement('tr', { key: bracket.id, className: 'hover:bg-slate-50 transition-colors' },
+                                        React.createElement('td', { className: 'p-4 border-r border-slate-200 font-bold text-slate-700' },
+                                            `Escalão ${index + 1}`
+                                        ),
+                                        React.createElement('td', { className: 'p-4 border-r border-slate-200 text-right font-medium' },
+                                            formatCurrency(bracket.minValue)
+                                        ),
+                                        React.createElement('td', { className: 'p-4 border-r border-slate-200 text-right font-medium' },
+                                            formatCurrency(bracket.maxValue)
+                                        ),
+                                        React.createElement('td', { className: 'p-4 text-center font-bold text-blue-700 text-lg' },
+                                            `${bracket.rate}%`
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    ),
+
+                    // Legal Information
+                    React.createElement('div', { className: 'mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6' },
+                        React.createElement('h3', { className: 'font-bold text-blue-900 mb-2' }, '📋 Base Legal'),
+                        React.createElement('ul', { className: 'text-sm text-blue-800 space-y-1' },
+                            React.createElement('li', null, '• Código do IRT – Decreto Presidencial n.º 147/13 (e atualizações)'),
+                            React.createElement('li', null, '• Lei Geral do Trabalho – Lei n.º 7/15'),
+                            React.createElement('li', null, '• As percentagens podem ser atualizadas por decreto anual')
+                        )
+                    )
+                )
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(IRTTableStandalone));
+    </script>
+</body>
+
+</html>
