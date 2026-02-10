@@ -1492,7 +1492,7 @@ const App = () => {
 
       case 'HR_IRT_TABLE': return <IRTTableManager onClose={() => setCurrentView('HR')} />;
 
-      case 'WORKSPACE': return <WorkLocationManager workLocations={workLocations} />;
+      case 'WORK_LOCATIONS': return <WorkLocationManager workLocations={workLocations} />;
 
       case 'SECRETARIA_LIST': return <SecretariaList documents={secDocuments} onCreateNew={() => setCurrentView('SECRETARIA_FORM')} onEdit={doc => { setInvoiceInitialData({ ...doc } as any); setCurrentView('SECRETARIA_FORM'); }} />;
       case 'SECRETARIA_FORM': return <SecretariaForm onSave={doc => { setSecDocuments([doc, ...secDocuments.filter(d => d.id !== doc.id)]); setCurrentView('SECRETARIA_LIST'); }} onCancel={() => setCurrentView('SECRETARIA_LIST')} series={series} document={invoiceInitialData as any} />;
