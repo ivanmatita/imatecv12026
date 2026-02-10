@@ -95,20 +95,24 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices }) => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20 max-w-[1600px] mx-auto">
 
-      {/* Horizontal Toolbar Section - Compact and High Contrast */}
-      <div className="flex flex-wrap gap-2 mb-2 print:hidden justify-center md:justify-start bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+      {/* Horizontal Toolbar Section - Modern & Dynamic */}
+      <div className="flex flex-wrap gap-4 mb-8 p-1 print:hidden justify-center md:justify-start">
         {usefulLinks.map((link, idx) => (
           <a
             key={idx}
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-300 hover:bg-white hover:border-blue-600 transition-all duration-200"
+            className="group relative flex items-center gap-3 px-5 py-4 rounded-2xl bg-white border border-slate-100 shadow-lg shadow-slate-100 hover:shadow-xl hover:shadow-slate-200 hover:-translate-y-1 transition-all duration-300 overflow-hidden"
           >
-            <div className={`p-1.5 ${link.color} text-white rounded-lg shadow-sm transition-transform group-hover:scale-110`}>
-              <link.icon size={16} />
+            <div className={`absolute inset-0 opacity-0 group-hover:opacity-5 transition-opacity duration-300 ${link.color}`}></div>
+            <div className={`p-2.5 ${link.color} text-white rounded-xl shadow-md group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}>
+              <link.icon size={20} className="drop-shadow-sm" />
             </div>
-            <span className="text-[10px] font-black text-slate-800 uppercase tracking-wider">{link.label}</span>
+            <div className="flex flex-col">
+              <span className="text-xs font-black text-slate-700 uppercase tracking-widest group-hover:text-slate-900 transition-colors">{link.label}</span>
+            </div>
+            <div className={`absolute bottom-0 left-0 h-1 w-0 group-hover:w-full transition-all duration-500 ease-out ${link.color}`}></div>
           </a>
         ))}
       </div>
