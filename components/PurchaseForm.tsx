@@ -1,402 +1,425 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { Supplier, Purchase, PurchaseItem, Product, PurchaseType, WorkLocation, PaymentMethod, CashRegister, Warehouse, Company, TaxRate, Metric } from '../types';
+import { Supplier, Purchase, PurchaseItem, PurchaseType, Product, Warehouse, PaymentMethod, Company } from '../types';
 import { generateId, formatCurrency, formatDate } from '../utils';
-import { supabase } from '../services/supabaseClient';
-import { Plus, Trash, Save, ArrowLeft, FileText, List, X, Calendar, CreditCard, Ruler, Users, Briefcase, Calculator, RefreshCw, Scale, Hash, ShieldCheck, Box, Store, Info, MapPin, Phone, Wallet, AlertCircle, Bookmark, Tag, UserPlus, Loader2, Percent } from 'lucide-react';
+import { Plus, Trash, Save, ArrowLeft, FileText, List, X, Calendar, ChevronDown, ChevronUp, Ruler, Users, Briefcase, Percent, DollarSign, RefreshCw, Scale, ShieldCheck, Hash, Tag, UserPlus, Loader2, Package, AlertCircle, MapPin } from 'lucide-react';
 
 interface PurchaseFormProps {
-  onSave: (purchase: Purchase) => void;
-  onCancel: () => void;
-  onViewList: () => void;
-  onSaveSupplier: (supplier: Supplier) => void;
-  products: Product[];
-  suppliers: Supplier[];
-  workLocations: WorkLocation[];
-  cashRegisters: CashRegister[];
-  warehouses: Warehouse[];
-  initialData?: Partial<Purchase>;
-  currentUser?: string;
-  currentUserId?: string;
-  currentCompany?: Company;
-  taxRates?: TaxRate[];
-  metrics?: Metric[];
+    onSave: (purchase: Purchase) => void;
+    onCancel: () => void;
+    onViewList: () => void;
+    suppliers: Supplier[];
+    products: Product[];
+    warehouses: Warehouse[];
+    initialData?: Partial<Purchase>;
+    currentUser?: string;
+    currentUserId?: string;
+    currentCompany?: Company;
 }
 
-const PurchaseForm: React.FC<PurchaseFormProps> = ({ 
-  onSave, onCancel, onViewList, onSaveSupplier, suppliers, products, workLocations, cashRegisters, warehouses = [],
-  initialData, currentUser, currentUserId, currentCompany, taxRates = [], metrics = []
+const PurchaseForm: React.FC<PurchaseFormProps> = ({
+    onSave, onCancel, onViewList, suppliers, products, warehouses, initialData, currentUser, currentUserId, currentCompany
 }) => {
-  const [supplierId, setSupplierId] = useState(initialData?.supplierId || '');
-  const [purchaseType, setPurchaseType] = useState<PurchaseType>(initialData?.type || PurchaseType.FT);
-  const [workLocationId, setWorkLocationId] = useState(initialData?.workLocationId || '');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>(initialData?.paymentMethod || '');
-  const [cashRegisterId, setCashRegisterId] = useState(initialData?.cashRegisterId || '');
-  const [warehouseId, setWarehouseId] = useState(initialData?.warehouseId || '');
-  const [documentNumber, setDocumentNumber] = useState(initialData?.documentNumber || '');
-  const [hashCode, setHashCode] = useState(initialData?.hash || '');
-  
-  const today = new Date().toISOString().split('T')[0];
-  const [date, setDate] = useState(initialData?.date || today);
-  const [dueDate, setDueDate] = useState(initialData?.dueDate || today);
+    const [supplierId, setSupplierId] = useState(initialData?.supplierId || '');
+    const [purchaseType, setPurchaseType] = useState<PurchaseType>(initialData?.type || PurchaseType.FT);
+    const [documentNumber, setDocumentNumber] = useState(initialData?.documentNumber || '');
+    const [documentHash, setDocumentHash] = useState(initialData?.documentHash || '');
+    const [warehouseId, setWarehouseId] = useState(initialData?.warehouseId || '');
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>(initialData?.paymentMethod || '');
 
-  const [currency, setCurrency] = useState<string>(initialData?.currency || 'AOA');
-  const [exchangeRate, setExchangeRate] = useState<number>(initialData?.exchangeRate || 1);
-  const [retentionType, setRetentionType] = useState<'NONE' | 'CAT_50' | 'CAT_100'>(initialData?.retentionType || 'NONE');
+    const today = new Date().toISOString().split('T')[0];
+    const [date, setDate] = useState(initialData?.date || today);
+    const [dueDate, setDueDate] = useState(initialData?.dueDate || today);
+    const [accountingDate, setAccountingDate] = useState(initialData?.accountingDate || today);
 
-  const selectedSupplier = useMemo(() => suppliers.find(s => s.id === supplierId), [suppliers, supplierId]);
-  const showPaymentFields = (purchaseType === PurchaseType.FR || purchaseType === PurchaseType.VD || purchaseType === PurchaseType.REC);
+    const [currency, setCurrency] = useState<string>(initialData?.currency || 'AOA');
+    const [exchangeRate, setExchangeRate] = useState<number>(initialData?.exchangeRate || 1);
 
-  const [items, setItems] = useState<PurchaseItem[]>(() => {
-      const rawItems = initialData?.items || [];
-      return rawItems.map((i: any) => ({
-          id: i.id || generateId(),
-          productId: i.productId,
-          description: i.description || '',
-          reference: i.reference || '',
-          quantity: i.quantity || 1,
-          unit: i.unit || 'un',
-          unitPrice: i.unitPrice || 0,
-          discount: i.discount || 0,
-          taxRate: i.taxRate !== undefined ? i.taxRate : 14,
-          taxAmount: i.taxAmount || 0,
-          total: i.total !== undefined ? i.total : ((i.quantity || 1) * (i.unitPrice || 0) * (1 - (i.discount || 0)/100)),
-          rubrica: i.rubrica || '71.1',
-          warehouseId: i.warehouseId || initialData?.warehouseId || '',
-          itemType: i.itemType || 'Produto',
-          length: i.length || 1,
-          width: i.width || 1,
-          height: i.height || 1,
-          showMetrics: i.showMetrics || false,
-          withholdingRate: i.withholdingRate || 6.5,
-          withholdingAmount: i.withholdingAmount || 0,
-          expiryDate: i.expiryDate || ''
-      }));
-  });
+    // Seções expansíveis
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+        documentData: true,
+        supplierData: true,
+        items: true,
+        financial: false,
+        notes: false
+    });
 
-  const [globalDiscount, setGlobalDiscount] = useState(initialData?.globalDiscount || 0); 
-  const [notes, setNotes] = useState(initialData?.notes || '');
+    const toggleSection = (section: string) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
 
-  useEffect(() => {
-    if (!initialData) {
-        setSupplierId('');
-        setDocumentNumber('');
-        setHashCode('');
-        setItems([]);
-        setNotes('');
-        setGlobalDiscount(0);
-    }
-  }, [initialData]);
+    const [items, setItems] = useState<PurchaseItem[]>(() => {
+        const rawItems = initialData?.items || [];
+        return rawItems.map((i: any) => ({
+            id: i.id || generateId(),
+            productId: i.productId,
+            description: i.description || '',
+            reference: i.reference || '',
+            quantity: i.quantity || 1,
+            unit: i.unit || 'un',
+            unitPrice: i.unitPrice || 0,
+            discount: i.discount || 0,
+            taxRate: i.taxRate !== undefined ? i.taxRate : 14,
+            length: i.length || 1,
+            width: i.width || 1,
+            height: i.height || 1,
+            showMetrics: i.showMetrics || false,
+            total: i.total !== undefined ? i.total : ((i.quantity || 1) * (i.length || 1) * (i.width || 1) * (i.height || 1) * (i.unitPrice || 0) * (1 - (i.discount || 0) / 100))
+        }));
+    });
 
-  const calculateLineTotals = (qty: number, price: number, discount: number, taxRate: number, length: number = 1, width: number = 1, height: number = 1) => {
-      const actualLength = length > 0 ? length : 1;
-      const actualWidth = width > 0 ? width : 1;
-      const actualHeight = height > 0 ? height : 1;
-      const baseRaw = qty * actualLength * actualWidth * actualHeight * price;
-      const discAmount = baseRaw * (discount / 100);
-      const subtotalItem = baseRaw - discAmount;
-      const taxAmount = subtotalItem * (taxRate / 100);
-      const total = subtotalItem + taxAmount;
-      return { subtotalItem, taxAmount, total };
-  };
+    const [globalDiscount, setGlobalDiscount] = useState(initialData?.globalDiscount || 0);
+    const [notes, setNotes] = useState(initialData?.notes || '');
 
-  const subtotal = useMemo(() => items.reduce((acc, item) => acc + (item.quantity * item.unitPrice * (item.length || 1) * (item.width || 1) * (item.height || 1) * (1 - (item.discount || 0) / 100)), 0), [items]);
-  const totalTaxAmount = useMemo(() => items.reduce((acc, item) => acc + (item.taxAmount || 0), 0), [items]);
-  const discountGlobalValue = subtotal * (globalDiscount / 100);
-  const totalFinal = (subtotal + totalTaxAmount) - discountGlobalValue;
+    useEffect(() => {
+        if (currency === 'AOA') setExchangeRate(1);
+        else if (currency === 'USD') setExchangeRate(850);
+        else if (currency === 'EUR') setExchangeRate(920);
+    }, [currency]);
 
-  const handleAddItem = () => {
-    setItems([...items, { 
-      id: generateId(), description: '', reference: '', quantity: 1, unit: 'un',
-      unitPrice: 0, discount: 0, taxRate: 14, taxAmount: 0, total: 0, rubrica: '71.1',
-      warehouseId: warehouseId || (warehouses.length > 0 ? warehouses[0].id : ''), 
-      itemType: 'Produto', length: 1, width: 1, height: 1,
-      showMetrics: false, withholdingRate: 6.5, withholdingAmount: 0, expiryDate: ''
-    }]);
-  };
+    const calculateLineTotal = (qty: number, length: number = 1, width: number = 1, height: number = 1, price: number, discount: number) => {
+        const actualLength = length > 0 ? length : 1;
+        const actualWidth = width > 0 ? width : 1;
+        const actualHeight = height > 0 ? height : 1;
+        const base = qty * actualLength * actualWidth * actualHeight * price;
+        const discAmount = base * (discount / 100);
+        return base - discAmount;
+    };
 
-  const handleProductSelect = (index: number, productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (product) {
-      const newItems = [...items];
-      const unitPrice = product.costPrice || 0; 
-      const taxRate = newItems[index].taxRate || 14;
-      const calc = calculateLineTotals(newItems[index].quantity, unitPrice, newItems[index].discount || 0, taxRate, newItems[index].length, newItems[index].width, newItems[index].height);
-      
-      newItems[index] = {
-        ...newItems[index],
-        productId: product.id,
-        description: product.name,
-        reference: product.barcode || '',
-        unit: product.unit || 'un',
-        unitPrice: unitPrice,
-        taxAmount: calc.taxAmount,
-        total: calc.total,
-        warehouseId: product.warehouseId || newItems[index].warehouseId || warehouseId || (warehouses.length > 0 ? warehouses[0].id : '')
-      };
-      setItems(newItems);
-    }
-  };
+    const subtotal = useMemo(() => items.reduce((acc, item) => acc + item.total, 0), [items]);
+    const totalTaxAmount = useMemo(() => items.reduce((acc, item) => acc + (item.total * (item.taxRate / 100)), 0), [items]);
+    const discountGlobalValue = subtotal * (globalDiscount / 100);
+    const totalFinal = (subtotal + totalTaxAmount) - discountGlobalValue;
+    const contraValue = totalFinal * exchangeRate;
 
-  const handleUpdateItem = (index: number, field: keyof PurchaseItem, value: any) => {
-    const newItems = [...items];
-    const item = newItems[index];
-    (item as any)[field] = value;
-    
-    if (['quantity', 'unitPrice', 'discount', 'taxRate', 'length', 'width', 'height'].includes(field as string)) {
-        const calc = calculateLineTotals(item.quantity, item.unitPrice, item.discount || 0, item.taxRate || 0, item.length || 1, item.width || 1, item.height || 1);
-        item.taxAmount = calc.taxAmount;
-        item.total = calc.total;
-    }
-    setItems(newItems);
-  };
+    const handleAddItem = () => {
+        setItems([...items, { id: generateId(), description: '', reference: '', quantity: 1, length: 1, width: 1, height: 1, unit: 'un', unitPrice: 0, discount: 0, taxRate: 14, total: 0, showMetrics: false }]);
+    };
 
-  const handleRemoveItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
+    const handleProductSelect = (index: number, productId: string) => {
+        const product = products.find(p => p.id === productId);
+        if (product) {
+            const newItems = [...items];
+            const unitPrice = product.price;
+            newItems[index] = {
+                ...newItems[index],
+                productId: product.id,
+                description: product.name,
+                reference: product.barcode || product.id.substring(0, 6).toUpperCase(),
+                unit: product.unit || 'un',
+                unitPrice: unitPrice,
+                total: calculateLineTotal(newItems[index].quantity, newItems[index].length, newItems[index].width, newItems[index].height, unitPrice, newItems[index].discount)
+            };
+            setItems(newItems);
+        }
+    };
 
-  const handleSave = () => {
-      if (!supplierId || !documentNumber || items.length === 0) return alert("Preencha todos os campos obrigatórios (*)");
-      if (showPaymentFields && (!paymentMethod || !cashRegisterId)) return alert("Preencha a forma de pagamento e o caixa de destino.");
+    const handleUpdateItem = (index: number, field: keyof PurchaseItem, value: any) => {
+        const newItems = [...items];
+        const item = newItems[index];
+        (item as any)[field] = value;
+        if (['quantity', 'unitPrice', 'discount', 'length', 'width', 'height'].includes(field as string)) {
+            item.total = calculateLineTotal(item.quantity, item.length || 1, item.width || 1, item.height || 1, item.unitPrice, item.discount);
+        }
+        setItems(newItems);
+    };
 
-      const newPurchase: Purchase = {
-          id: initialData?.id || generateId(),
-          type: purchaseType,
-          supplierId,
-          supplier: selectedSupplier?.name || 'Fornecedor',
-          nif: selectedSupplier?.vatNumber || '',
-          date,
-          dueDate,
-          documentNumber,
-          hash: hashCode,
-          items,
-          subtotal,
-          taxAmount: totalTaxAmount,
-          total: totalFinal,
-          globalDiscount,
-          currency,
-          exchangeRate,
-          status: (purchaseType === PurchaseType.FR || purchaseType === PurchaseType.REC || purchaseType === PurchaseType.VD) ? 'PAID' : 'PENDING',
-          notes,
-          workLocationId,
-          warehouseId,
-          paymentMethod: paymentMethod || undefined,
-          cashRegisterId
-      };
-      onSave(newPurchase);
-  };
+    const handleRemoveItem = (index: number) => {
+        setItems(items.filter((_, i) => i !== index));
+    };
 
-  return (
-    <div className="max-w-[1600px] mx-auto space-y-4 animate-in fade-in duration-500 pb-20 relative px-4 sm:px-6">
-      
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4 sticky top-0 z-20">
-        <div className="flex items-center gap-4 w-full md:w-auto">
-            <button onClick={onCancel} className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-2">
-                <ArrowLeft size={20} /> <span className="font-medium hidden sm:inline">Voltar</span>
-            </button>
-            <div className="h-8 w-px bg-slate-200 mx-2"></div>
-            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Box size={20} className="text-orange-500"/>
-                {purchaseType === PurchaseType.FR ? 'Nova Fatura/Recibo de Compra' : 'Registar Compra'}
-            </h1>
-        </div>
-      </div>
+    const handleSave = () => {
+        if (!supplierId) return alert("Erro: Deve selecionar um Fornecedor.");
+        if (!documentNumber) return alert("Erro: Número do Documento é obrigatório.");
+        if (items.length === 0) return alert("Erro: O documento deve conter pelo menos um item.");
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        <div className="xl:col-span-10 space-y-6">
-            
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center gap-2">
-                    <FileText size={14} className="text-orange-600"/>
-                    <h3 className="font-bold text-slate-700 text-sm uppercase">Dados e Datas da Compra</h3>
+        const newPurchase: Purchase = {
+            id: initialData?.id || generateId(),
+            type: purchaseType,
+            documentNumber,
+            documentHash,
+            date,
+            time: new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
+            dueDate,
+            accountingDate,
+            supplierId,
+            supplierName: suppliers.find(s => s.id === supplierId)?.name || 'Fornecedor',
+            supplierNif: suppliers.find(s => s.id === supplierId)?.vatNumber,
+            items,
+            subtotal,
+            globalDiscount,
+            taxAmount: totalTaxAmount,
+            total: totalFinal,
+            currency,
+            exchangeRate,
+            contraValue,
+            notes,
+            companyId: currentCompany?.id || '',
+            warehouseId,
+            paymentMethod: paymentMethod || undefined,
+            operatorName: currentUser,
+            source: 'MANUAL'
+        };
+        onSave(newPurchase);
+    };
+
+    return (
+        <div className="p-6 bg-slate-50 min-h-screen animate-in fade-in pb-20">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <FileText className="text-blue-600" /> Registar Compra
+                    </h1>
+                    <p className="text-xs text-slate-500">Registo de Documentos de Compra e Fornecedores</p>
                 </div>
-                <div className="p-5 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tipo</label>
-                            <select className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold" value={purchaseType} onChange={(e) => setPurchaseType(e.target.value as PurchaseType)}>
-                                {Object.values(PurchaseType).map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                         </div>
-                         <div className="space-y-1">
-                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nº Documento *</label>
-                             <input required className="w-full p-2 border rounded-lg bg-white text-sm font-bold text-blue-700 outline-none" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} placeholder="Ex: FT 2024/001" />
-                         </div>
-                         <div className="space-y-1">
-                             <label className="text-[10px] font-black text-orange-600 uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={10}/> Código Hash (AGT)</label>
-                             <input maxLength={4} className="w-full p-2 border border-orange-200 rounded-lg bg-orange-50 text-sm font-black text-orange-700 uppercase" value={hashCode} onChange={(e) => setHashCode(e.target.value)} placeholder="4 dígitos" />
-                         </div>
-                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Centro de Custo (Obra)</label>
-                            <select className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 text-sm font-bold" value={workLocationId} onChange={e => setWorkLocationId(e.target.value)}>
-                                <option value="">Sem Local Associado</option>
-                                {workLocations.map(wl => <option key={wl.id} value={wl.id}>{wl.name}</option>)}
-                            </select>
-                         </div>
+                <div className="flex gap-2">
+                    <button onClick={onCancel} className="p-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 border transition-all shadow-sm flex items-center gap-2">
+                        <ArrowLeft size={18} /> <span className="hidden sm:inline">Voltar</span>
+                    </button>
+                    <button onClick={onViewList} className="p-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 border"><List size={18} /></button>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in slide-in-from-right">
+                <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
+                    <h2 className="font-black uppercase tracking-widest text-sm">Ficha de Compra - Edição</h2>
+                </div>
+
+                <div className="p-6 space-y-4 max-w-6xl mx-auto">
+                    {/* DADOS DO DOCUMENTO */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <button onClick={() => toggleSection('documentData')} className="w-full flex items-center justify-between p-4 bg-white text-slate-800 hover:bg-slate-50 transition-colors border-b">
+                            <span className="font-bold text-sm uppercase flex items-center gap-2"><FileText size={16} className="text-blue-500" /> Dados e Datas do Documento</span>
+                            {expandedSections.documentData ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                        {expandedSections.documentData && (
+                            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white animate-in slide-in-from-top-2">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Tipo de Documento</label>
+                                    <select className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none focus:border-blue-500 bg-slate-50" value={purchaseType} onChange={(e) => setPurchaseType(e.target.value as PurchaseType)}>
+                                        {Object.values(PurchaseType).map(t => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Armazém de Destino</label>
+                                    <select className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none focus:border-blue-500 bg-slate-50" value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>
+                                        <option value="">Sem Armazém Associado</option>
+                                        {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-black text-orange-600 uppercase block mb-1 flex items-center gap-1"><Hash size={10} /> Número do Documento *</label>
+                                    <input className={`w-full border-2 p-2.5 rounded-2xl outline-none ${!documentNumber ? 'border-red-300' : 'border-orange-200'}`} placeholder="Ex: FT S/120" value={documentNumber} onChange={e => setDocumentNumber(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-orange-600 uppercase block mb-1 flex items-center gap-1"><ShieldCheck size={10} /> Código Hash (AGT)</label>
+                                    <input className="w-full border-2 p-2.5 rounded-2xl outline-none border-orange-200" placeholder="Assinatura Digital (Opcional)" value={documentHash} onChange={e => setDocumentHash(e.target.value)} />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-600 block mb-1 flex items-center gap-1"><Calendar size={10} /> Data Emissão</label>
+                                    <input type="date" className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none" value={date} onChange={e => setDate(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-600 block mb-1 flex items-center gap-1"><Calendar size={10} /> Data Contabilística</label>
+                                    <input type="date" className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none bg-blue-50" value={accountingDate} onChange={e => setAccountingDate(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-600 block mb-1 flex items-center gap-1"><Calendar size={10} /> Data Vencimento</label>
+                                    <input type="date" className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none bg-orange-50" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-emerald-600 uppercase block mb-1">Forma Pagamento</label>
+                                    <select className="w-full border border-emerald-200 p-2.5 rounded-2xl bg-emerald-50 outline-none" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}>
+                                        <option value="">Selecione...</option>
+                                        <option value="CASH">Dinheiro (AOA)</option>
+                                        <option value="MULTICAIXA">Multicaixa</option>
+                                        <option value="TRANSFER">Transferência</option>
+                                        <option value="OTHERS">Outros</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar size={10}/> Data Emissão</label>
-                            <input type="date" className="w-full p-2 border border-slate-200 rounded-lg text-sm" value={date} onChange={e => setDate(e.target.value)} />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar size={10}/> Data Vencimento</label>
-                            <input type="date" className="w-full p-2 border border-slate-200 rounded-lg text-sm bg-orange-50" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-                        </div>
-                    </div>
-
-                    {showPaymentFields && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 animate-in slide-in-from-top-2">
-                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Forma Pagamento</label>
-                                <select className="w-full p-2 border border-emerald-200 rounded-lg bg-emerald-50 text-sm font-bold outline-none" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}>
-                                    <option value="">Selecione...</option>
-                                    <option value="CASH">Dinheiro (AOA)</option>
-                                    <option value="MULTICAIXA">Multicaixa</option>
-                                    <option value="TRANSFER">Transferência</option>
-                                    <option value="OTHERS">Outros</option>
+                    {/* DADOS DO FORNECEDOR */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <button onClick={() => toggleSection('supplierData')} className="w-full flex items-center justify-between p-4 bg-white text-slate-800 hover:bg-slate-50 transition-colors border-b">
+                            <span className="font-bold text-sm uppercase flex items-center gap-2"><Users size={16} className="text-green-600" /> Seleção de Fornecedor</span>
+                            {expandedSections.supplierData ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                        {expandedSections.supplierData && (
+                            <div className="p-6 bg-white animate-in slide-in-from-top-2">
+                                <select className={`w-full border p-3 rounded-2xl outline-none ${!supplierId ? 'border-red-300' : 'border-slate-300'}`} value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+                                    <option value="">-- SELECIONAR FORNECEDOR (GESTÃO DE FORNECEDORES) * --</option>
+                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} (NIF: {s.vatNumber})</option>)}
                                 </select>
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Caixa de Pagamento</label>
-                                <select className="w-full p-2 border border-emerald-200 rounded-lg bg-emerald-50 text-sm font-bold outline-none" value={cashRegisterId} onChange={e => setCashRegisterId(e.target.value)}>
-                                    <option value="">Selecione...</option>
-                                    {cashRegisters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
+                        )}
+                    </div>
+
+                    {/* ITENS DO DOCUMENTO */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <button onClick={() => toggleSection('items')} className="w-full flex items-center justify-between p-4 bg-white text-slate-800 hover:bg-slate-50 transition-colors border-b">
+                            <span className="font-bold text-sm uppercase flex items-center gap-2"><List size={16} className="text-purple-600" /> Itens da Compra</span>
+                            {expandedSections.items ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                        {expandedSections.items && (
+                            <div className="p-6 bg-white animate-in slide-in-from-top-2">
+                                <button onClick={handleAddItem} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm flex items-center gap-2 mb-4">
+                                    <Plus size={14} /> Adicionar Linha
+                                </button>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="bg-slate-100 text-slate-500 uppercase text-[10px] font-bold">
+                                            <tr>
+                                                <th className="p-3 w-10 text-center"></th>
+                                                <th className="p-3 w-32">Ref</th>
+                                                <th className="p-3">Artigo / Descrição</th>
+                                                <th className="p-3 w-20 text-center">Qtd</th>
+                                                <th className="p-3 w-28 text-center">Unidade</th>
+                                                <th className="p-3 w-28 text-right">Preço Un.</th>
+                                                <th className="p-3 w-32 text-center">IVA Aplicado</th>
+                                                <th className="p-3 w-16 text-center">Desc%</th>
+                                                <th className="p-3 w-28 text-right">Total</th>
+                                                <th className="p-3 w-10"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {items.map((item, index) => (
+                                                <React.Fragment key={item.id}>
+                                                    <tr className="hover:bg-blue-50/30 transition-colors">
+                                                        <td className="p-2 text-center"><button onClick={() => handleUpdateItem(index, 'showMetrics', !item.showMetrics)} className={`p-1.5 rounded-lg transition-all ${item.showMetrics ? 'bg-blue-100 text-blue-600 rotate-180' : 'text-slate-300 hover:text-blue-500'}`}><Ruler size={16} /></button></td>
+                                                        <td className="p-2"><input className="w-full p-1 border border-slate-200 rounded text-[10px] font-mono focus:ring-1 focus:ring-blue-500 outline-none" placeholder="Referência" value={item.reference || ''} onChange={e => handleUpdateItem(index, 'reference', e.target.value)} /></td>
+                                                        <td className="p-2">
+                                                            <div className="flex flex-col gap-1">
+                                                                <select className="w-full p-1 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none font-bold text-blue-700 bg-blue-50" onChange={(e) => handleProductSelect(index, e.target.value)} value={item.productId || ''}>
+                                                                    <option value="">-- SELECIONAR ARTIGO (STOCK REAL) * --</option>
+                                                                    {products.map(p => (
+                                                                        <option key={p.id} value={p.id}>
+                                                                            {p.id.substring(0, 8).toUpperCase()} | {p.name} | STOCK: {p.stock} {p.unit}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                <input className="w-full p-1 bg-transparent border-b border-dashed border-slate-300 focus:border-blue-500 outline-none text-xs font-bold" placeholder="Descrição do item *..." value={item.description} onChange={(e) => handleUpdateItem(index, 'description', e.target.value)} />
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-2 text-center"><input type="number" className="w-full p-1.5 text-center border border-slate-200 rounded bg-white text-sm font-bold" value={item.quantity} onChange={(e) => handleUpdateItem(index, 'quantity', Number(e.target.value))} /></td>
+                                                        <td className="p-2 text-center">
+                                                            <select className="w-full p-1.5 border border-slate-200 rounded bg-white text-[10px] font-bold" value={item.unit || 'un'} onChange={(e) => handleUpdateItem(index, 'unit', e.target.value)}>
+                                                                <option value="un">un</option>
+                                                                <option value="kg">kg</option>
+                                                                <option value="mês">mês</option>
+                                                                <option value="dia">dia</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="p-2 text-right"><input type="number" className="w-full p-1.5 text-right border border-slate-200 rounded bg-white text-sm font-bold" value={item.unitPrice} onChange={(e) => handleUpdateItem(index, 'unitPrice', Number(e.target.value))} /></td>
+                                                        <td className="p-2 text-center">
+                                                            <select className="w-full p-1.5 border border-slate-200 rounded bg-white text-xs font-bold" value={item.taxRate} onChange={(e) => handleUpdateItem(index, 'taxRate', Number(e.target.value))}>
+                                                                <option value={14}>IVA 14%</option>
+                                                                <option value={7}>IVA 7%</option>
+                                                                <option value={0}>IVA Isento</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="p-2 text-center"><input type="number" className="w-full p-1.5 text-center border border-slate-200 rounded bg-white text-sm" value={item.discount} onChange={(e) => handleUpdateItem(index, 'discount', Number(e.target.value))} /></td>
+                                                        <td className="p-2 text-right font-black text-slate-700 text-sm">{formatCurrency(item.total).replace('Kz', '')}</td>
+                                                        <td className="p-2 text-center"><button onClick={() => handleRemoveItem(index)} className="text-slate-300 hover:text-red-500 p-1"><Trash size={16} /></button></td>
+                                                    </tr>
+                                                    {item.showMetrics && (
+                                                        <tr className="bg-blue-50/50 animate-in slide-in-from-top-2">
+                                                            <td className="p-2 border-r border-blue-100"></td>
+                                                            <td colSpan={8} className="p-3">
+                                                                <div className="flex items-center gap-6">
+                                                                    <div className="flex items-center gap-2"><span className="text-[10px] font-black text-blue-600 uppercase">Volume:</span><Ruler size={14} className="text-blue-400" /></div>
+                                                                    <div className="flex flex-wrap gap-4">
+                                                                        <div className="flex items-center gap-2"><label className="text-[10px] font-bold text-slate-400 uppercase">C (m)</label><input type="number" className="w-20 p-1 border border-blue-200 rounded bg-white text-xs font-bold" value={item.length || 1} onChange={e => handleUpdateItem(index, 'length', Number(e.target.value))} /></div>
+                                                                        <div className="flex items-center gap-2"><label className="text-[10px] font-bold text-slate-400 uppercase">L (m)</label><input type="number" className="w-20 p-1 border border-blue-200 rounded bg-white text-xs font-bold" value={item.width || 1} onChange={e => handleUpdateItem(index, 'width', Number(e.target.value))} /></div>
+                                                                        <div className="flex items-center gap-2"><label className="text-[10px] font-bold text-slate-400 uppercase">A (m)</label><input type="number" className="w-20 p-1 border border-blue-200 rounded bg-white text-xs font-bold" value={item.height || 1} onChange={e => handleUpdateItem(index, 'height', Number(e.target.value))} /></div>
+                                                                        <div className="flex items-center gap-2 ml-4"><span className="text-[10px] font-bold text-slate-400 uppercase">Total m³:</span><span className="text-xs font-black text-blue-700">{(Number(item.length || 1) * Number(item.width || 1) * Number(item.height || 1)).toFixed(2)}</span></div>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td></td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </div>
-            </div>
+                        )}
+                    </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <Users size={14} className="text-orange-600"/>
-                        <h3 className="font-bold text-slate-700 text-sm uppercase">Seleção de Fornecedor (Cloud)</h3>
+                    {/* RESUMO FINANCEIRO */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <button onClick={() => toggleSection('financial')} className="w-full flex items-center justify-between p-4 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors border-b border-blue-200">
+                            <div className="flex items-center gap-2"><span className="font-black text-sm uppercase text-blue-600">Resumo Financeiro</span></div>
+                            {expandedSections.financial ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                        {expandedSections.financial && (
+                            <div className="p-6 bg-white space-y-6 animate-in slide-in-from-top-2">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Moeda</label>
+                                        <select className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none focus:border-blue-500 bg-slate-50" value={currency} onChange={e => setCurrency(e.target.value)}>
+                                            <option value="AOA">AOA (Kwanzas)</option><option value="USD">USD (Dólares)</option><option value="EUR">EUR (Euros)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Câmbio</label>
+                                        <input type="number" className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none" value={exchangeRate} onChange={e => setExchangeRate(Number(e.target.value))} />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Contravalor ({currency})</label>
+                                        <div className="w-full border border-slate-300 bg-slate-50 p-2.5 rounded-2xl font-bold text-slate-600">{formatCurrency(contraValue).replace('Kz', currency)}</div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-blue-600 uppercase block mb-1 flex items-center gap-1"><Tag size={12} /> Desconto Global (%)</label>
+                                        <input type="number" className="w-full border-2 border-blue-100 p-2.5 rounded-2xl outline-none" value={globalDiscount} onChange={e => setGlobalDiscount(Number(e.target.value))} placeholder="0%" />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 pt-2 border-t border-slate-100 text-[10px] uppercase font-bold">
+                                    <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+                                    {globalDiscount > 0 && <div className="flex justify-between text-red-600"><span>Desc. Global</span><span>-{formatCurrency(discountGlobalValue)}</span></div>}
+                                    <div className="flex justify-between text-slate-600 pt-2"><span>Imposto (IVA)</span><span>{formatCurrency(totalTaxAmount)}</span></div>
+                                    <div className="pt-4 mt-4 border-t-2 border-slate-800 flex flex-col items-end gap-1">
+                                        <span className="font-bold text-[9px] text-slate-400 uppercase tracking-widest">Valor Final</span>
+                                        <span className="font-black text-xl text-blue-600 tracking-tighter leading-none">{formatCurrency(totalFinal)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* OBSERVAÇÕES */}
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                        <button onClick={() => toggleSection('notes')} className="w-full flex items-center justify-between p-4 bg-white text-slate-800 hover:bg-slate-50 transition-colors border-b">
+                            <span className="font-bold text-sm uppercase flex items-center gap-2"><FileText size={16} className="text-slate-500" /> Observações Adicionais</span>
+                            {expandedSections.notes ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                        </button>
+                        {expandedSections.notes && (
+                            <div className="p-6 bg-white animate-in slide-in-from-top-2">
+                                <textarea className="w-full border border-slate-300 p-3 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 h-20 resize-none" placeholder="Notas do documento..." value={notes} onChange={(e) => setNotes(e.target.value)}></textarea>
+                            </div>
+                        )}
                     </div>
                 </div>
-                <div className="p-5">
-                    <select className="w-full p-3 border rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-orange-200 outline-none shadow-sm transition-all" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                        <option value="">-- SELECIONAR FORNECEDOR (Puxar da Nuvem) * --</option>
-                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} (NIF: {s.vatNumber})</option>)}
-                    </select>
-                    {selectedSupplier && (
-                        <div className="mt-3 bg-slate-50 p-4 rounded-xl border grid grid-cols-2 gap-2 text-[10px] uppercase font-bold text-slate-600">
-                            <span>Endereço: {selectedSupplier.address}</span>
-                            <span>Tipo: {selectedSupplier.supplierType}</span>
-                        </div>
-                    )}
-                </div>
-            </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-700 text-sm uppercase flex items-center gap-2"><List size={16}/> Itens da Compra</h3>
-                    <button onClick={handleAddItem} className="bg-orange-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-orange-700 shadow-sm flex items-center gap-2"><Plus size={14} /> Adicionar Linha</button>
+                <div className="p-6 border-t bg-slate-50 flex justify-end gap-3 sticky bottom-0 z-10">
+                    <button onClick={onCancel} className="px-8 py-3 border-2 border-slate-200 rounded-xl font-black text-slate-400 uppercase text-[10px] hover:bg-white transition">Cancelar</button>
+                    <button onClick={handleSave} className="bg-blue-600 text-white px-12 py-3 rounded-xl font-black uppercase text-[10px] shadow-xl hover:bg-blue-700 transition flex items-center gap-2">
+                        <Save size={16} /> Gravar Compra Cloud
+                    </button>
                 </div>
-                
-                <div className="flex-1 p-0 overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="bg-slate-100 text-slate-500 uppercase text-[10px] font-bold">
-                            <tr>
-                                <th className="p-3 w-10 text-center"></th>
-                                <th className="p-3 w-32">Ref/Serial</th>
-                                <th className="p-3">Artigo / Descrição</th>
-                                <th className="p-3 w-32">Rubrica PGC</th>
-                                <th className="p-3 w-40 bg-orange-50">Armazém Destino</th>
-                                <th className="p-3 w-20 text-center">Qtd</th>
-                                <th className="p-3 w-24 text-right">Preço Un.</th>
-                                <th className="p-3 w-16 text-center">IVA %</th>
-                                <th className="p-3 w-16 text-center bg-blue-50 text-blue-700">Desc %</th>
-                                <th className="p-3 w-24 text-right">Total</th>
-                                <th className="p-3 w-10"></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {items.map((item, index) => (
-                                <tr key={item.id} className="hover:bg-orange-50/30 transition-colors">
-                                    <td className="p-2 text-center"><Ruler size={16} className="text-slate-300"/></td>
-                                    <td className="p-2"><input className="w-full p-1 border border-slate-200 rounded text-[10px] font-mono focus:ring-1 focus:ring-orange-500 outline-none" value={item.reference || ''} onChange={e => handleUpdateItem(index, 'reference', e.target.value)} placeholder="Ref/Serial"/></td>
-                                    <td className="p-2">
-                                        <div className="flex flex-col gap-1">
-                                            <select className="w-full p-1 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-orange-500 outline-none font-bold text-blue-700 bg-blue-50" onChange={(e) => handleProductSelect(index, e.target.value)} value={item.productId || ''}>
-                                                <option value="">-- SELECIONAR ARTIGO (Stock Geral) --</option>
-                                                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                            </select>
-                                            <input className="w-full p-1 bg-transparent border-b border-dashed border-slate-300 focus:border-orange-500 outline-none text-xs font-bold" placeholder="Descrição manual..." value={item.description} onChange={(e) => handleUpdateItem(index, 'description', e.target.value)} />
-                                        </div>
-                                    </td>
-                                    <td className="p-2"><input className="w-full p-1 border border-slate-200 rounded text-[10px] font-bold bg-white" value={item.rubrica} onChange={e => handleUpdateItem(index, 'rubrica', e.target.value)} /></td>
-                                    <td className="p-2 bg-orange-50/20">
-                                        <select className="w-full p-1 border border-orange-200 rounded text-[10px] font-bold bg-white" value={item.warehouseId} onChange={e => handleUpdateItem(index, 'warehouseId', e.target.value)}>
-                                            <option value="">(Usar Geral)</option>
-                                            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                        </select>
-                                    </td>
-                                    <td className="p-2 text-center"><input type="number" className="w-full p-1.5 text-center border border-slate-200 rounded bg-white text-sm font-bold" value={item.quantity} onChange={(e) => handleUpdateItem(index, 'quantity', Number(e.target.value))} /></td>
-                                    <td className="p-2 text-right"><input type="number" className="w-full p-1.5 text-right border border-slate-200 rounded bg-white text-sm font-bold" value={item.unitPrice} onChange={(e) => handleUpdateItem(index, 'unitPrice', Number(e.target.value))} /></td>
-                                    <td className="p-2 text-center">
-                                        <select className="w-full p-1.5 border border-slate-200 rounded bg-white text-xs font-bold" value={item.taxRate} onChange={(e) => handleUpdateItem(index, 'taxRate', Number(e.target.value))}>
-                                            {taxRates.map(tr => <option key={tr.id} value={tr.percentage}>{tr.percentage}%</option>)}
-                                            {taxRates.length === 0 && <><option value={14}>14%</option><option value={0}>Isento</option></>}
-                                        </select>
-                                    </td>
-                                    <td className="p-2 text-center bg-blue-50/30"><input type="number" className="w-full p-1.5 text-center border border-blue-200 rounded bg-white text-sm font-black text-blue-700" value={item.discount} onChange={(e) => handleUpdateItem(index, 'discount', Number(e.target.value))} /></td>
-                                    <td className="p-2 text-right font-black text-slate-700 text-sm">{formatCurrency(item.total).replace('Kz','')}</td>
-                                    <td className="p-2 text-center"><button onClick={() => handleRemoveItem(index)} className="text-slate-300 hover:text-red-500 p-1"><Trash size={16} /></button></td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Observações da Compra</label>
-                <textarea className="w-full p-3 border border-slate-200 rounded-lg h-20 text-sm resize-none outline-none focus:ring-2 focus:ring-orange-500 transition-all" placeholder="Notas adicionais..." value={notes} onChange={(e) => setNotes(e.target.value)}></textarea>
             </div>
         </div>
-
-        <div className="xl:col-span-2 space-y-6">
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden sticky top-24">
-                <div className="bg-slate-800 text-white px-4 py-4 flex items-center gap-2"><CreditCard size={18}/><h3 className="font-bold text-xs uppercase">Resumo Financeiro</h3></div>
-                <div className="p-4 space-y-6">
-                    <div className="space-y-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1"><Percent size={12}/> Desconto Global (%)</label>
-                            <input 
-                                type="number" 
-                                className="w-full p-2 border-2 border-blue-100 rounded-lg bg-white font-black text-sm text-blue-600 outline-none" 
-                                value={globalDiscount} 
-                                onChange={e => setGlobalDiscount(Number(e.target.value))} 
-                                placeholder="0%"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-4 pt-2 border-t border-slate-100 text-[10px] uppercase font-bold">
-                        <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-                        {globalDiscount > 0 && <div className="flex justify-between text-red-600"><span>Desc. Global</span><span>-{formatCurrency(discountGlobalValue)}</span></div>}
-                        <div className="flex justify-between text-slate-600 pt-2"><span>Imposto (IVA)</span><span>{formatCurrency(totalTaxAmount)}</span></div>
-                        <div className="pt-4 mt-4 border-t-2 border-slate-800 flex flex-col items-end gap-1">
-                            <span className="font-bold text-[9px] text-slate-400 uppercase tracking-widest">Total da Compra</span>
-                            <span className="font-black text-xl text-orange-600 tracking-tighter leading-none">{formatCurrency(totalFinal)}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3">
-                <button onClick={handleSave} className="py-3 px-4 bg-orange-600 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-orange-700 shadow-xl flex items-center justify-center gap-2 transition-all transform active:scale-95">
-                  <Save size={18} /> Registar Documento
-                </button>
-            </div>
-        </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default PurchaseForm;

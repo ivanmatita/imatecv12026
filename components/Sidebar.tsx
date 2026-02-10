@@ -9,7 +9,7 @@ import {
   ClipboardCheck, ScrollText, UserCheck, School, Hotel,
   CookingPot, BedDouble, Calendar, FolderArchive, ChevronLeft, Menu,
   UtensilsCrossed, FileSearch, TrendingUp, ArrowRightLeft, Landmark,
-  Sprout, Church, Tractor, UserX
+  Sprout, Church, Tractor, UserX, Plus
 } from 'lucide-react';
 import { ViewState, User as UserType } from '../types';
 
@@ -38,75 +38,78 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isOpen, se
     {
       id: 'POS_GROUP', label: 'Ponto de Venda', icon: Monitor, hasSubmenu: true,
       children: [
-        { id: 'POS', label: 'Frente de Caixa (POS)' },
-        { id: 'CASH_CLOSURE', label: 'Fecho de Caixa' },
-        { id: 'CASH_CLOSURE_HISTORY', label: 'Fechos Efetuados' },
-        { id: 'POS_SETTINGS', label: 'Configurações POS' }
+        { id: 'POS', label: 'Frente de Caixa (POS)', icon: Monitor },
+        { id: 'CASH_CLOSURE', label: 'Fecho de Caixa', icon: CreditCard },
+        { id: 'CASH_CLOSURE_HISTORY', label: 'Fechos Efetuados', icon: FileText },
+        { id: 'POS_SETTINGS', label: 'Configurações POS', icon: Settings }
       ]
     },
 
     {
-      id: 'SCHOOL_GROUP', label: 'Gestão Escolar', icon: GraduationCap, hasSubmenu: true,
+      id: 'SPECIALIZED_GROUP', label: 'Gestão Especializada', icon: Briefcase, hasSubmenu: true,
       children: [
-        { id: 'SCHOOL_STUDENTS', label: 'Alunos & Matrículas', icon: Users },
-        { id: 'SCHOOL_TEACHERS', label: 'Professores & Salas', icon: UserCheck },
-        { id: 'SCHOOL_ACADEMIC', label: 'Gestão Académica', icon: ClipboardCheck },
-        { id: 'SCHOOL_DOCUMENTS', label: 'Documentos Oficiais', icon: ScrollText },
-        { id: 'SCHOOL_REPORTS', label: 'Relatórios & Mapas', icon: Table }
-      ]
-    },
-
-    {
-      id: 'RESTAURANT_GROUP', label: 'Restaurante', icon: UtensilsCrossed, hasSubmenu: true,
-      children: [
-        { id: 'RESTAURANT_MENU', label: 'Cardápio Digital', icon: ScrollText },
-        { id: 'RESTAURANT_TABLES', label: 'Gestão de Mesas', icon: Table },
-        { id: 'RESTAURANT_KDS', label: 'Cozinha (KDS)', icon: CookingPot },
-        { id: 'RESTAURANT_PRODUCTION', label: 'Controle de Produção', icon: Package }
-      ]
-    },
-
-    {
-      id: 'HOTEL_GROUP', label: 'Hotelaria', icon: Building2, hasSubmenu: true,
-      children: [
-        { id: 'HOTEL_ROOMS', label: 'Quartos & Status', icon: BedDouble },
-        { id: 'HOTEL_RESERVATIONS', label: 'Reservas', icon: Calendar },
-        { id: 'HOTEL_CHECKIN', label: 'Check-in / Out', icon: CheckCircle },
-        { id: 'HOTEL_GOVERNANCE', label: 'Governança', icon: Briefcase }
+        {
+          id: 'SCHOOL_GROUP', label: 'Gestão Escolar', icon: GraduationCap, isSubheader: true,
+          children: [
+            { id: 'SCHOOL_STUDENTS', label: 'Alunos & Matrículas', icon: Users },
+            { id: 'SCHOOL_TEACHERS', label: 'Professores & Salas', icon: UserCheck },
+            { id: 'SCHOOL_ACADEMIC', label: 'Gestão Académica', icon: ClipboardCheck },
+            { id: 'SCHOOL_DOCUMENTS', label: 'Documentos Oficiais', icon: ScrollText },
+            { id: 'SCHOOL_REPORTS', label: 'Relatórios & Mapas', icon: Table }
+          ]
+        },
+        {
+          id: 'RESTAURANT_GROUP', label: 'Restaurante', icon: UtensilsCrossed, isSubheader: true,
+          children: [
+            { id: 'RESTAURANT_MENU', label: 'Cardápio Digital', icon: ScrollText },
+            { id: 'RESTAURANT_TABLES', label: 'Gestão de Mesas', icon: Table },
+            { id: 'RESTAURANT_KDS', label: 'Cozinha (KDS)', icon: CookingPot },
+            { id: 'RESTAURANT_PRODUCTION', label: 'Controle de Produção', icon: Package }
+          ]
+        },
+        {
+          id: 'HOTEL_GROUP', label: 'Hotelaria', icon: Building2, isSubheader: true,
+          children: [
+            { id: 'HOTEL_ROOMS', label: 'Quartos & Status', icon: BedDouble },
+            { id: 'HOTEL_RESERVATIONS', label: 'Reservas', icon: Calendar },
+            { id: 'HOTEL_CHECKIN', label: 'Check-in / Out', icon: CheckCircle },
+            { id: 'HOTEL_GOVERNANCE', label: 'Governança', icon: Briefcase }
+          ]
+        }
       ]
     },
 
     {
       id: 'INVOICES_GROUP', label: 'Vendas', icon: FileText, hasSubmenu: true,
       children: [
-        { id: 'CREATE_INVOICE', label: 'Nova Fatura' },
-        { id: 'INVOICES', label: 'Documentos de Venda' },
-        { id: 'ACCOUNTING_REGULARIZATION', label: 'Regularização Clientes' },
-        { id: 'CLIENTS', label: 'Clientes' }
+        { id: 'CREATE_INVOICE', label: 'Nova Fatura', icon: Plus },
+        { id: 'INVOICES', label: 'Documentos de Venda', icon: FileText },
+        { id: 'ACCOUNTING_REGULARIZATION', label: 'Regularização Clientes', icon: Calculator },
+        { id: 'CLIENTS', label: 'Clientes', icon: Users }
       ]
     },
     {
       id: 'PURCHASES_GROUP', label: 'Compras', icon: ShoppingBag, hasSubmenu: true,
       children: [
-        { id: 'CREATE_PURCHASE', label: 'Registar Compra' },
-        { id: 'PURCHASES', label: 'Documentos de Compra' },
-        { id: 'SUPPLIERS', label: 'Fornecedores' },
-        { id: 'PURCHASE_ANALYSIS', label: 'Análise de Compras' }
+        { id: 'CREATE_PURCHASE', label: 'Registar Compra', icon: Plus },
+        { id: 'PURCHASES', label: 'Documentos de Compra', icon: ShoppingBag },
+        { id: 'SUPPLIERS', label: 'Fornecedores', icon: Building2 },
+        { id: 'PURCHASE_ANALYSIS', label: 'Análise de Compras', icon: BarChart3 }
       ]
     },
     {
       id: 'STOCK_GROUP', label: 'Stocks & Inventário', icon: Package, hasSubmenu: true,
       children: [
-        { id: 'STOCK', label: 'Gestão de Artigos' }
+        { id: 'STOCK', label: 'Gestão de Artigos', icon: Package }
       ]
     },
     {
       id: 'FINANCE_GROUP', label: 'Finanças', icon: CreditCard, hasSubmenu: true,
       children: [
-        { id: 'FINANCE_CASH', label: 'Caixa (Gestão)' },
-        { id: 'FINANCE_MAPS', label: 'Mapas Custos/Proveitos' },
-        { id: 'FINANCE_REPORTS', label: 'Relatórios de Gestão' },
-        { id: 'FINANCE_TAX_DOCS', label: 'Documentos de Impostos' }
+        { id: 'FINANCE_CASH', label: 'Caixa (Gestão)', icon: CreditCard },
+        { id: 'FINANCE_MAPS', label: 'Mapas Custos/Proveitos', icon: Table },
+        { id: 'FINANCE_REPORTS', label: 'Relatórios de Gestão', icon: BarChart3 },
+        { id: 'FINANCE_TAX_DOCS', label: 'Documentos de Impostos', icon: FileText }
       ]
     },
     {
@@ -262,7 +265,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isOpen, se
           </button>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar pb-6 pt-4">
+        <nav className="flex-1 px-3 space-y-1 pb-6 pt-4 overflow-visible">
           {!isCollapsed && <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-3">Menu Principal</div>}
 
           {filteredItems.map((item) => {
@@ -273,7 +276,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isOpen, se
             const isChildActive = item.hasSubmenu && flatChildren.some(c => c.id === currentView);
 
             return (
-              <div key={item.id} className="mb-1">
+              <div key={item.id} className="mb-1 relative">
                 <button
                   onClick={() => handleMenuClick(item)}
                   title={isCollapsed ? item.label : ''}
@@ -297,56 +300,63 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isOpen, se
                 </button>
 
                 {item.hasSubmenu && isMenuOpen && !isCollapsed && (
-                  <div className="ml-4 mt-1 space-y-1 border-l border-slate-700 pl-2 animate-in slide-in-from-left-2 duration-200">
-                    {item.children?.map(child => {
-                      if (child.isSubheader) {
-                        return (
-                          <div key={child.id} className="mt-2 mb-1">
-                            <div className="text-[10px] font-bold text-slate-500 uppercase px-3 py-1 flex items-center gap-2">
-                              {child.icon && <child.icon size={12} />} {child.label}
-                            </div>
-                            <div className="pl-2 space-y-1 border-l border-slate-800 ml-2">
-                              {child.children?.map(subChild => {
-                                const isSubActive = currentView === subChild.id;
-                                return (
-                                  <button
-                                    key={subChild.id}
-                                    onClick={() => handleSubMenuClick(subChild.id as ViewState)}
-                                    className={`
-                                                                w-full text-left px-3 py-2 text-sm rounded-md transition-colors flex items-center justify-between
+                  <div className="absolute left-full top-0 ml-2 w-72 bg-slate-900 rounded-xl shadow-2xl border border-slate-700 z-50 animate-in slide-in-from-left-2 duration-200 max-h-[80vh] overflow-y-auto">
+                    <div className="p-2 space-y-1">
+                      {item.children?.map(child => {
+                        if (child.isSubheader) {
+                          const SubheaderIcon = child.icon;
+                          return (
+                            <div key={child.id} className="mt-2 mb-1">
+                              <div className="text-[10px] font-bold text-slate-400 uppercase px-3 py-2 flex items-center gap-2 bg-slate-800 rounded-lg">
+                                {SubheaderIcon && <SubheaderIcon size={12} />} {child.label}
+                              </div>
+                              <div className="pl-2 space-y-1 mt-1">
+                                {child.children?.map(subChild => {
+                                  const isSubActive = currentView === subChild.id;
+                                  const SubChildIcon = subChild.icon;
+                                  return (
+                                    <button
+                                      key={subChild.id}
+                                      onClick={() => handleSubMenuClick(subChild.id as ViewState)}
+                                      className={`
+                                                                w-full text-left px-3 py-2 text-sm rounded-md transition-colors flex items-center gap-2
                                                                 ${isSubActive
-                                        ? 'text-blue-400 font-bold bg-slate-800/50'
-                                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                                      }
+                                          ? 'text-white font-bold bg-blue-600'
+                                          : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                                        }
                                                             `}
-                                  >
-                                    {subChild.label}
-                                  </button>
-                                )
-                              })}
+                                    >
+                                      {SubChildIcon && <SubChildIcon size={14} />}
+                                      <span className="flex-1">{subChild.label}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      }
+                          );
+                        }
 
-                      const isSubActive = currentView === child.id;
-                      return (
-                        <button
-                          key={child.id}
-                          onClick={() => handleSubMenuClick(child.id as ViewState)}
-                          className={`
-                                        w-full text-left px-3 py-2.5 text-sm rounded-md transition-colors flex items-center justify-between
+                        const isSubActive = currentView === child.id;
+                        const ChildIcon = child.icon;
+                        return (
+                          <button
+                            key={child.id}
+                            onClick={() => handleSubMenuClick(child.id as ViewState)}
+                            className={`
+                                        w-full text-left px-3 py-2.5 text-sm rounded-md transition-colors flex items-center gap-2
                                         ${isSubActive
-                              ? 'bg-blue-50 text-blue-900 font-bold shadow-sm'
-                              : 'text-slate-300 hover:text-white hover:bg-blue-600/30'
-                            }
+                                ? 'bg-blue-600 text-white font-bold shadow-sm'
+                                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                              }
                                     `}
-                        >
-                          {child.label}
-                          {isSubActive && <div className="w-1.5 h-1.5 bg-blue-900 rounded-full"></div>}
-                        </button>
-                      )
-                    })}
+                          >
+                            {ChildIcon && <ChildIcon size={14} />}
+                            <span className="flex-1">{child.label}</span>
+                            {isSubActive && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
