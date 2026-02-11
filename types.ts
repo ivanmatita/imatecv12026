@@ -551,6 +551,7 @@ export interface InvoiceItem {
   width?: number;
   height?: number;
   rubrica?: string;
+  typology?: string;
 }
 
 export interface Invoice {

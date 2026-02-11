@@ -23,32 +23,36 @@ const SecretariaList: React.FC<SecretariaListProps> = ({ documents: localDocs, o
     loadDocuments();
   }, []);
 
+  /**
+   * LISTAR (SELECT) - Carrega todos os documentos do banco
+   * Executa ao abrir a página e após cada operação CRUD
+   */
   async function loadDocuments() {
     setIsLoading(true);
     setFetchError(null);
     try {
-      // Use the centralized connection function
-      const { listarSecretaria } = await import('../services/supabaseClient');
-      const data = await listarSecretaria();
+      // Importar função centralizada do Supabase
+      const { listarSecretariaDocumentos } = await import('../services/supabaseClient');
+      const data = await listarSecretariaDocumentos();
 
       if (data) {
         const mapped: SecretariaDocument[] = data.map((d: any) => ({
           id: d.id,
-          type: String(d.tipo_documento || d.tipo || 'Carta'), // Adapted to check both fields
+          type: String(d.tipo || 'Carta'),
           seriesId: d.serie_id || '',
           seriesCode: d.serie_codigo || '',
           number: d.numero || 'S/N',
-          date: d.data_criacao || d.data_doc || '',
-          destinatarioNome: d.destinatario || d.destinatario_nome || '',
-          destinatarioIntro: d.destinatario_intro || '',
-          assunto: d.titulo || d.assunto || '',
-          corpo: typeof d.conteudo === 'object' ? JSON.stringify(d.conteudo) : String(d.conteudo || d.corpo || ''),
+          date: d.data_doc || d.created_at || '',
+          destinatarioNome: d.destinatario_nome || '',
+          destinatarioIntro: d.destinatario_intro || 'Exo(a) Sr(a)',
+          assunto: d.assunto || '',
+          corpo: d.corpo || '',
           confidencial: d.confidencial || false,
-          imprimirPagina: d.imprimir_pagina || true,
+          imprimirPagina: d.imprimir_pagina !== undefined ? d.imprimir_pagina : true,
           createdBy: d.criado_por || 'Admin',
           createdAt: d.created_at || '',
           isLocked: d.bloqueado || false,
-          departamento: d.departamento || ''
+          departamento: d.departamento || 'Geral'
         }));
         setDbDocs(mapped);
       }
@@ -61,6 +65,38 @@ const SecretariaList: React.FC<SecretariaListProps> = ({ documents: localDocs, o
       }
       setFetchError(message);
       console.warn("Falha ao carregar documentos da secretaria:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  /**
+   * APAGAR (DELETE) - Remove um documento do banco
+   * Mostra confirmação antes de apagar
+   * Após sucesso, executa novo SELECT
+   */
+  async function handleDelete(doc: SecretariaDocument) {
+    if (!confirm(`Tem certeza que deseja apagar o documento "${doc.assunto}"?\n\nEsta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { apagarSecretariaDocumento } = await import('../services/supabaseClient');
+      await apagarSecretariaDocumento(doc.id);
+
+      // Sincronizar: executar novo SELECT após DELETE
+      await loadDocuments();
+
+      alert('Documento apagado com sucesso!');
+
+      // Chamar callback se existir
+      if (onDelete) {
+        onDelete(doc);
+      }
+    } catch (err: any) {
+      console.error("Erro ao apagar documento:", err);
+      alert(`Erro ao apagar documento: ${err.message || 'Erro desconhecido'}`);
     } finally {
       setIsLoading(false);
     }
@@ -195,6 +231,7 @@ const SecretariaList: React.FC<SecretariaListProps> = ({ documents: localDocs, o
                     <div className="flex justify-center gap-2">
                       <button onClick={() => handlePrintDoc(doc)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition" title="Visualizar/Imprimir"><Printer size={16} /></button>
                       <button onClick={() => onEdit(doc)} className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded transition" title="Editar"><Edit2 size={16} /></button>
+                      <button onClick={() => handleDelete(doc)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition" title="Apagar"><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>

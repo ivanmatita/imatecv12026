@@ -55,6 +55,9 @@ import HRMaps from './HRMaps';
 import WorkCard from './WorkCard';
 import LaborRegistration from './LaborRegistration';
 import WorkLocationManager from './WorkLocationManager';
+import NewDocumentForm from './NewDocumentForm';
+import NewPurchaseForm from './NewPurchaseForm';
+
 
 import { supabase } from '../services/supabaseClient';
 
@@ -1223,10 +1226,78 @@ const App = () => {
       case 'PROJECT_REPORT': return selectedProject ? <ProjectReport project={selectedProject} invoices={certifiedInvoices} purchases={validPurchases} onBack={() => setCurrentView('WORKSPACE')} /> : <Workspace invoices={certifiedInvoices} purchases={validPurchases} clients={clients} onViewInvoice={(inv) => { setInvoiceInitialData(inv); setCurrentView('CREATE_INVOICE'); }} onViewProject={(p) => { setSelectedProject(p); setCurrentView('PROJECT_REPORT'); }} />;
       case 'ARCHIVES': return <ArchivesManager />;
       case 'FINANCE_TAX_DOCS': return <TaxDocsManager />;
-      case 'INVOICES': return <InvoiceList invoices={invoices} onDelete={handleDeleteInvoice} onUpdate={i => { setInvoiceInitialData(i); setCurrentView('CREATE_INVOICE'); }} onLiquidate={handleLiquidate} onCancelInvoice={handleCancelInvoice} onCertify={i => handleSaveInvoice(i, i.seriesId, 'CERTIFY')} onCreateNew={() => { setInvoiceInitialData(undefined); setCurrentView('CREATE_INVOICE'); }} onCreateDerived={(s, t) => { setInvoiceInitialType(t); setInvoiceInitialData({ clientId: s.clientId, items: s.items.map(i => ({ ...i, id: generateId() })), sourceInvoiceId: s.id, currency: s.currency, exchangeRate: s.exchangeRate }); setCurrentView('CREATE_INVOICE'); }} onUpload={() => { }} onViewReports={() => { }} onQuickUpdate={() => { }} onViewClientAccount={(cid) => { setSelectedClientId(cid); setCurrentView('CLIENTS'); }} currentCompany={currentCompany} workLocations={workLocations} cashRegisters={cashRegisters} series={series} currentUser={currentUser} purchases={validPurchases} />;
-      case 'CREATE_INVOICE': return <InvoiceForm onSave={handleSaveInvoice} onCancel={() => setCurrentView('INVOICES')} onViewList={() => setCurrentView('INVOICES')} onAddWorkLocation={() => { }} onSaveClient={handleSaveClient} onSaveWorkLocation={wl => setWorkLocations([...workLocations, wl])} clients={clients} products={products} workLocations={workLocations} cashRegisters={cashRegisters} series={series} warehouses={warehouses} initialType={invoiceInitialType} initialData={invoiceInitialData} currentUser={currentUser.name} currentUserId={currentUser.id} currentCompany={currentCompany} taxRates={taxRates.filter(t => t.isActive)} metrics={metrics} />;
-      case 'PURCHASES': return <PurchaseList purchases={purchases} onDelete={handleDeletePurchase} onUpdate={p => { setPurchaseInitialData(p); setCurrentView('CREATE_PURCHASE'); }} onCreateNew={() => { setPurchaseInitialData(undefined); setCurrentView('CREATE_PURCHASE'); }} onUpload={() => { }} onSaveSupplier={s => setSuppliers([...suppliers, s])} />;
-      case 'CREATE_PURCHASE': return <PurchaseForm onSave={handleSavePurchase} onCancel={() => setCurrentView('PURCHASES')} onViewList={() => setCurrentView('PURCHASES')} products={products} workLocations={workLocations} cashRegisters={cashRegisters} suppliers={suppliers} warehouses={warehouses} onSaveSupplier={s => setSuppliers([...suppliers, s])} initialData={purchaseInitialData} currentUser={currentUser.name} currentUserId={currentUser.id} currentCompany={currentCompany} taxRates={taxRates.filter(t => t.isActive)} metrics={metrics} />;
+      case 'INVOICES':
+      case 'CREATE_INVOICE':
+        return (
+          <div className="h-full relative">
+            <InvoiceList
+              invoices={invoices}
+              onDelete={handleDeleteInvoice}
+              onUpdate={i => { setInvoiceInitialData(i); setCurrentView('CREATE_INVOICE'); }}
+              onLiquidate={handleLiquidate}
+              onCancelInvoice={handleCancelInvoice}
+              onCertify={i => handleSaveInvoice(i, i.seriesId, 'CERTIFY')}
+              onCreateNew={() => { setInvoiceInitialData(undefined); setCurrentView('CREATE_INVOICE'); }}
+              onCreateDerived={(s, t) => { setInvoiceInitialType(t); setInvoiceInitialData({ clientId: s.clientId, items: s.items.map(i => ({ ...i, id: generateId() })), sourceInvoiceId: s.id, currency: s.currency, exchangeRate: s.exchangeRate }); setCurrentView('CREATE_INVOICE'); }}
+              onUpload={() => { }}
+              onViewReports={() => { }}
+              onQuickUpdate={() => { }}
+              onViewClientAccount={(cid) => { setSelectedClientId(cid); setCurrentView('CLIENTS'); }}
+              currentCompany={currentCompany}
+              workLocations={workLocations}
+              cashRegisters={cashRegisters}
+              series={series}
+              currentUser={currentUser}
+              purchases={validPurchases}
+            />
+            {currentView === 'CREATE_INVOICE' && (
+              <NewDocumentForm
+                onSave={handleSaveInvoice}
+                onCancel={() => setCurrentView('INVOICES')}
+                clients={clients}
+                products={products}
+                workLocations={workLocations}
+                cashRegisters={cashRegisters}
+                series={series}
+                warehouses={warehouses}
+                initialType={invoiceInitialType}
+                initialData={invoiceInitialData}
+                currentUser={currentUser?.name || ''}
+                currentUserId={currentUser?.id || ''}
+                currentCompany={currentCompany}
+                taxRates={taxRates.filter(t => t.isActive)}
+                metrics={metrics}
+              />
+            )}
+          </div>
+        );
+      case 'PURCHASES':
+      case 'CREATE_PURCHASE':
+        return (
+          <div className="h-full relative">
+            <PurchaseList
+              purchases={purchases}
+              onDelete={handleDeletePurchase}
+              onUpdate={p => { setPurchaseInitialData(p); setCurrentView('CREATE_PURCHASE'); }}
+              onCreateNew={() => { setPurchaseInitialData(undefined); setCurrentView('CREATE_PURCHASE'); }}
+              onUpload={() => { }}
+              onSaveSupplier={s => setSuppliers([...suppliers, s])}
+            />
+            {currentView === 'CREATE_PURCHASE' && (
+              <NewPurchaseForm
+                onSave={handleSavePurchase}
+                onCancel={() => setCurrentView('PURCHASES')}
+                suppliers={suppliers}
+                products={products}
+                warehouses={warehouses}
+                initialData={purchaseInitialData}
+                currentUser={currentUser?.name || ''}
+                currentUserId={currentUser?.id || ''}
+                currentCompany={currentCompany}
+              />
+            )}
+          </div>
+        );
       case 'CLIENTS': return <ClientList clients={clients} onSaveClient={handleSaveClient} initialSelectedClientId={selectedClientId} onClearSelection={() => setSelectedClientId(null)} currentCompany={currentCompany} invoices={invoices} workLocations={workLocations} />;
       case 'SUPPLIERS': return <SupplierList suppliers={suppliers} onSaveSupplier={s => setSuppliers([...suppliers, s])} purchases={validPurchases} workLocations={workLocations} />;
       case 'PURCHASE_ANALYSIS': return <PurchaseAnalysis purchases={validPurchases} />;

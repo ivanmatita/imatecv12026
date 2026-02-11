@@ -49,24 +49,80 @@ export async function criarCompra(compra: any) {
   return data;
 }
 
-// ================= SECRETARIA =================
-export async function listarSecretaria() {
+// ================= SECRETARIA DOCUMENTOS =================
+// Tabela: secretaria_documentos
+// CRUD completo conforme requisitos do projeto
+
+/**
+ * LISTAR (SELECT) - Busca todos os documentos da secretaria
+ * Ordenado por created_at desc
+ */
+export async function listarSecretariaDocumentos() {
   const { data, error } = await supabase
-    .from('secretaria')
-    .select('*');
+    .from('secretaria_documentos')
+    .select('*')
+    .order('created_at', { ascending: false });
 
   if (error) throw error;
   return data;
 }
 
-export async function criarDocumentoSecretaria(doc: any) {
+/**
+ * CRIAR (INSERT) - Cria um novo documento na secretaria
+ * Preenche automaticamente created_at com now()
+ */
+export async function criarSecretariaDocumento(documento: any) {
   const { data, error } = await supabase
-    .from('secretaria')
-    .insert([doc])
+    .from('secretaria_documentos')
+    .insert([{
+      ...documento,
+      created_at: new Date().toISOString()
+    }])
     .select();
 
   if (error) throw error;
   return data;
+}
+
+/**
+ * ATUALIZAR (UPDATE) - Atualiza um documento existente
+ * Atualiza automaticamente updated_at com now()
+ */
+export async function atualizarSecretariaDocumento(id: string, documento: any) {
+  const { data, error } = await supabase
+    .from('secretaria_documentos')
+    .update({
+      ...documento,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * APAGAR (DELETE) - Remove um documento da secretaria
+ */
+export async function apagarSecretariaDocumento(id: string) {
+  const { data, error } = await supabase
+    .from('secretaria_documentos')
+    .delete()
+    .eq('id', id)
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// ================= FUNÇÕES LEGADAS (MANTER COMPATIBILIDADE) =================
+export async function listarSecretaria() {
+  return listarSecretariaDocumentos();
+}
+
+export async function criarDocumentoSecretaria(doc: any) {
+  return criarSecretariaDocumento(doc);
 }
 
 // ================= PAGAMENTO DE IMPOSTO =================
@@ -94,7 +150,8 @@ export async function pagarImposto(imposto: any) {
 export async function listarLocaisTrabalho() {
   const { data, error } = await supabase
     .from('local_trabalho')
-    .select('*');
+    .select('*')
+    .order('created_at', { ascending: false });
 
   if (error) throw error;
   return data;
@@ -105,6 +162,31 @@ export async function criarLocalTrabalho(local: any) {
     .from('local_trabalho')
     .insert([local])
     .select();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function atualizarLocalTrabalho(id: string, local: any) {
+  const { data, error } = await supabase
+    .from('local_trabalho')
+    .update(local)
+    .eq('id', id)
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// NÃO IMPLEMENTAR DELETE - Registros não podem ser apagados
+// Se necessário, usar controle de status (ativo/inativo)
+
+// ================= CLIENTES =================
+export async function listarClientes() {
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('id, nome, nif')
+    .order('nome', { ascending: true });
 
   if (error) throw error;
   return data;

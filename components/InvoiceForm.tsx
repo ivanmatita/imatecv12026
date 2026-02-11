@@ -99,7 +99,8 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
             type: i.type || 'PRODUCT',
             expiryDate: i.expiryDate || '',
             valueDate: i.valueDate || today,
-            rubrica: i.rubrica || (i.type === 'SERVICE' ? '62.1' : '61.1')
+            rubrica: i.rubrica || (i.type === 'SERVICE' ? '62.1' : '61.1'),
+            typology: i.typology || 'Geral'
         }));
     });
 
@@ -158,7 +159,7 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
     const handleAddItem = () => {
         if (isRestricted) return;
-        setItems([...items, { id: generateId(), description: '', reference: '', quantity: 1, length: 1, width: 1, height: 1, unit: 'un', unitPrice: 0, discount: 0, taxRate: 14, total: 0, type: 'PRODUCT', expiryDate: '', valueDate: today, showMetrics: false, rubrica: '61.1' }]);
+        setItems([...items, { id: generateId(), description: '', reference: '', quantity: 1, length: 1, width: 1, height: 1, unit: 'un', unitPrice: 0, discount: 0, taxRate: 14, total: 0, type: 'PRODUCT', expiryDate: '', valueDate: today, showMetrics: false, rubrica: '61.1', typology: 'Geral' }]);
     };
 
     const handleProductSelect = (index: number, productId: string) => {
@@ -394,20 +395,6 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                         {Object.values(InvoiceType).filter(t => t !== InvoiceType.RG).map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Série Fiscal *</label>
-                                    <select className={`w-full border p-2.5 rounded-2xl outline-none ${!selectedSeriesId ? 'border-red-300' : 'border-slate-300'}`} value={selectedSeriesId} onChange={(e) => setSelectedSeriesId(e.target.value)} disabled={isRestricted}>
-                                        <option value="">Selecione Série...</option>
-                                        {allowedSeries.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code}) - {s.type}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Local de Trabalho</label>
-                                    <select className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none focus:border-blue-500 bg-slate-50" value={workLocationId} onChange={e => setWorkLocationId(e.target.value)} disabled={isRestricted}>
-                                        <option value="">Sem Local Associado</option>
-                                        {workLocations.map(wl => <option key={wl.id} value={wl.id}>{wl.name}</option>)}
-                                    </select>
-                                </div>
 
                                 {isManualSeries && (
                                     <>
@@ -467,11 +454,30 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                             {expandedSections.clientData ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                         </button>
                         {expandedSections.clientData && (
-                            <div className="p-6 bg-white animate-in slide-in-from-top-2">
-                                <select className={`w-full border p-3 rounded-2xl outline-none ${!clientId ? 'border-red-300' : 'border-slate-300'}`} value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={isRestricted}>
-                                    <option value="">-- SELECIONAR CLIENTE (GESTÃO DE CLIENTES) * --</option>
-                                    {clients.map(c => <option key={c.id} value={c.id}>{c.name} (NIF: {c.vatNumber})</option>)}
-                                </select>
+                            <div className="p-6 bg-white animate-in slide-in-from-top-2 space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Cliente *</label>
+                                    <select className={`w-full border p-3 rounded-2xl outline-none ${!clientId ? 'border-red-300' : 'border-slate-300'}`} value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={isRestricted}>
+                                        <option value="">-- SELECIONAR CLIENTE (GESTÃO DE CLIENTES) * --</option>
+                                        {clients.map(c => <option key={c.id} value={c.id}>{c.name} (NIF: {c.vatNumber})</option>)}
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Série Fiscal *</label>
+                                        <select className={`w-full border p-2.5 rounded-2xl outline-none ${!selectedSeriesId ? 'border-red-300' : 'border-slate-300'}`} value={selectedSeriesId} onChange={(e) => setSelectedSeriesId(e.target.value)} disabled={isRestricted}>
+                                            <option value="">Selecione Série...</option>
+                                            {allowedSeries.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code}) - {s.type}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Local de Trabalho</label>
+                                        <select className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none focus:border-blue-500 bg-slate-50" value={workLocationId} onChange={e => setWorkLocationId(e.target.value)} disabled={isRestricted}>
+                                            <option value="">Sem Local Associado</option>
+                                            {workLocations.map(wl => <option key={wl.id} value={wl.id}>{wl.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -485,9 +491,11 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                         {expandedSections.items && (
                             <div className="p-6 bg-white animate-in slide-in-from-top-2">
                                 {!isRestricted && (
-                                    <button onClick={handleAddItem} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm flex items-center gap-2 mb-4">
-                                        <Plus size={14} /> Adicionar Linha
-                                    </button>
+                                    <div className="flex justify-end mb-4">
+                                        <button onClick={handleAddItem} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm flex items-center gap-2">
+                                            <Plus size={14} /> Adicionar Item
+                                        </button>
+                                    </div>
                                 )}
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
@@ -497,6 +505,7 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                                 <th className="p-3 w-20">Tipo</th>
                                                 <th className="p-3 w-32">Ref</th>
                                                 <th className="p-3">Artigo / Descrição</th>
+                                                <th className="p-3 w-32 text-center">Tipologia</th>
                                                 <th className="p-3 w-32 text-center bg-blue-50 text-blue-800">Data Valor</th>
                                                 <th className="p-3 w-20 text-center">Qtd</th>
                                                 <th className="p-3 w-28 text-center">Unidade</th>
@@ -511,7 +520,7 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                             {items.map((item, index) => (
                                                 <React.Fragment key={item.id}>
                                                     <tr className="hover:bg-blue-50/30 transition-colors">
-                                                        <td className="p-2 text-center"><button onClick={() => handleUpdateItem(index, 'showMetrics', !item.showMetrics)} className={`p-1.5 rounded-lg transition-all ${item.showMetrics ? 'bg-blue-100 text-blue-600 rotate-180' : 'text-slate-300 hover:text-blue-500'}`}><Ruler size={16} /></button></td>
+                                                        <td className="p-2 text-center"><button onClick={() => handleUpdateItem(index, 'showMetrics', !item.showMetrics)} className={`p-1.5 rounded-lg transition-all ${item.showMetrics ? 'bg-blue-100 text-blue-600 rotate-180' : 'bg-transparent text-transparent hover:text-slate-400'}`}><Ruler size={16} /></button></td>
                                                         <td className="p-2"><select className="w-full bg-transparent text-[10px] font-bold text-slate-600 outline-none" value={item.type} onChange={(e) => handleUpdateItem(index, 'type', e.target.value as any)} disabled={isRestricted}><option value="PRODUCT">PROD</option><option value="SERVICE">SERV</option></select></td>
                                                         <td className="p-2"><input className="w-full p-1 border border-slate-200 rounded text-[10px] font-mono focus:ring-1 focus:ring-blue-500 outline-none" placeholder="Referência" value={item.reference || ''} onChange={e => handleUpdateItem(index, 'reference', e.target.value)} disabled={isRestricted} /></td>
                                                         <td className="p-2">
@@ -528,6 +537,15 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                                                 )}
                                                                 <input className="w-full p-1 bg-transparent border-b border-dashed border-slate-300 focus:border-blue-500 outline-none text-xs font-bold" placeholder="Descrição do item *..." value={item.description} onChange={(e) => handleUpdateItem(index, 'description', e.target.value)} disabled={isRestricted} />
                                                             </div>
+                                                        </td>
+                                                        <td className="p-2">
+                                                            <select className="w-full p-1.5 border border-slate-200 rounded bg-white text-[10px] font-bold" value={item.typology || 'Geral'} onChange={(e) => handleUpdateItem(index, 'typology', e.target.value)} disabled={isRestricted}>
+                                                                <option value="Geral">Geral</option>
+                                                                <option value="Mercadoria">Mercadoria</option>
+                                                                <option value="Matéria Prima">Matéria Prima</option>
+                                                                <option value="Produto Acabado">Produto Acabado</option>
+                                                                <option value="Serviço">Serviço</option>
+                                                            </select>
                                                         </td>
                                                         <td className="p-2 bg-blue-50/30"><input type="date" className="w-full p-1 border border-blue-200 rounded text-[10px] font-bold text-center bg-white" value={item.valueDate || today} onChange={e => handleUpdateItem(index, 'valueDate', e.target.value)} disabled={isRestricted} /></td>
                                                         <td className="p-2 text-center"><input type="number" className="w-full p-1.5 text-center border border-slate-200 rounded bg-white text-sm font-bold" value={item.quantity} onChange={(e) => handleUpdateItem(index, 'quantity', Number(e.target.value))} disabled={isRestricted} /></td>
