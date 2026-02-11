@@ -193,7 +193,75 @@ export async function listarClientes() {
 }
 
 // ================= ARQUIVOS =================
-export async function uploadArquivo(file: File) {
+// Tabela: arquivos
+// CRUD completo conforme requisitos do projeto
+
+/**
+ * LISTAR (SELECT) - Busca todos os arquivos
+ * Ordenado por created_at desc
+ */
+export async function listarArquivos() {
+  const { data, error } = await supabase
+    .from('arquivos')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * CRIAR (INSERT) - Cria um novo arquivo
+ * Preenche automaticamente created_at e updated_at com now()
+ */
+export async function criarArquivo(arquivo: any) {
+  const { data, error } = await supabase
+    .from('arquivos')
+    .insert([{
+      ...arquivo,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }])
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * ATUALIZAR (UPDATE) - Atualiza um arquivo existente
+ * Atualiza automaticamente updated_at com now()
+ */
+export async function atualizarArquivo(id: string, arquivo: any) {
+  const { data, error } = await supabase
+    .from('arquivos')
+    .update({
+      ...arquivo,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * APAGAR (DELETE) - Remove um arquivo
+ */
+export async function apagarArquivo(id: string) {
+  const { data, error } = await supabase
+    .from('arquivos')
+    .delete()
+    .eq('id', id)
+    .select();
+
+  if (error) throw error;
+  return data;
+}
+
+// ================= STORAGE DE ARQUIVOS =================
+export async function uploadArquivoStorage(file: File) {
   const filePath = `arquivos/${Date.now()}-${file.name}`;
 
   const { data, error } = await supabase.storage
@@ -204,11 +272,27 @@ export async function uploadArquivo(file: File) {
   return data;
 }
 
-export async function listarArquivos() {
+export async function listarArquivosStorage() {
   const { data, error } = await supabase.storage
     .from('arquivos')
     .list();
 
   if (error) throw error;
   return data;
+}
+
+// ================= FUNÇÃO GLOBAL - LOCAL DE TRABALHO =================
+/**
+ * Função global para buscar todos os locais de trabalho
+ * Deve ser usada em dropdowns/selects de formulários
+ * Retorna id e nome ordenados alfabeticamente
+ */
+export async function fetchLocalTrabalho() {
+  const { data, error } = await supabase
+    .from('local_trabalho')
+    .select('id, nome')
+    .order('nome', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
 }

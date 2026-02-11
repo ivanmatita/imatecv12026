@@ -4,12 +4,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { SecretariaDocument, DocumentSeries } from '../types';
 import { generateUUID, formatDate } from '../utils';
 import { Save, ArrowLeft, Printer, Bold, Italic, AlignLeft, AlignCenter, AlignRight, List, Type, Eye, ChevronDown, ChevronUp, Underline, X, Loader2 } from 'lucide-react';
+import { fetchLocalTrabalho } from '../services/supabaseClient';
 
 interface SecretariaFormProps {
     document?: SecretariaDocument;
     onSave: (doc: SecretariaDocument) => void;
     onCancel: () => void;
     series: DocumentSeries[];
+}
+
+interface LocalTrabalho {
+    id: string;
+    nome: string;
 }
 
 const SecretariaForm: React.FC<SecretariaFormProps> = ({ document: existingDoc, onSave, onCancel, series }) => {
@@ -30,6 +36,7 @@ const SecretariaForm: React.FC<SecretariaFormProps> = ({ document: existingDoc, 
 
     const [dateExtended, setDateExtended] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [locaisTrabalho, setLocaisTrabalho] = useState<LocalTrabalho[]>([]);
     const editorRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -40,7 +47,19 @@ const SecretariaForm: React.FC<SecretariaFormProps> = ({ document: existingDoc, 
             setFormData(prev => ({ ...prev, seriesId: series[0].id, seriesCode: series[0].code }));
         }
         updateDateExtended(formData.date || new Date().toISOString().split('T')[0]);
+
+        // Carregar locais de trabalho
+        loadLocaisTrabalho();
     }, [existingDoc, series]);
+
+    const loadLocaisTrabalho = async () => {
+        try {
+            const data = await fetchLocalTrabalho();
+            setLocaisTrabalho(data || []);
+        } catch (err: any) {
+            console.error('Erro ao carregar locais de trabalho:', err);
+        }
+    };
 
     const updateDateExtended = (dateVal: string) => {
         if (!dateVal) return;
@@ -162,6 +181,21 @@ const SecretariaForm: React.FC<SecretariaFormProps> = ({ document: existingDoc, 
                         <div>
                             <label className="text-xs font-bold text-slate-500 uppercase">Data</label>
                             <input type="date" className="w-full border rounded p-2 text-sm" value={formData.date} onChange={e => { setFormData({ ...formData, date: e.target.value }); updateDateExtended(e.target.value); }} />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase">Local de Trabalho</label>
+                            <select
+                                className="w-full border rounded p-2 text-sm"
+                                value={formData.companyId || ''}
+                                onChange={e => setFormData({ ...formData, companyId: e.target.value })}
+                            >
+                                <option value="">Selecione...</option>
+                                {locaisTrabalho.map((local) => (
+                                    <option key={local.id} value={local.id}>
+                                        {local.nome}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 
