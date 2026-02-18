@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Dashboard from './Dashboard';
 import InvoiceList from './InvoiceList';
-import InvoiceForm from './InvoiceForm';
+
 import PurchaseList from './PurchaseList';
 import PurchaseForm from './PurchaseForm';
 import ClientList from './ClientList';
@@ -1314,6 +1314,7 @@ const App = () => {
                 suppliers={suppliers}
                 products={products}
                 warehouses={warehouses}
+                workLocations={workLocations}
                 initialData={purchaseInitialData}
                 currentUser={currentUser?.name || ''}
                 currentUserId={currentUser?.id || ''}

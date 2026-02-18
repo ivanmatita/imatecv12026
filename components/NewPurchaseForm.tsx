@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Supplier, Purchase, PurchaseItem, PurchaseType, Product, Warehouse, PaymentMethod, Company, TaxRate } from '../types';
+
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Supplier, Purchase, PurchaseItem, PurchaseType, Product, Warehouse, PaymentMethod, Company, TaxRate, WorkLocation } from '../types';
 import { generateId, formatCurrency } from '../utils';
-import { Save, X, FileText, Briefcase, CreditCard, User, Plus, Ruler, Tag, Hash, ShieldCheck, MapPin, Calendar, DollarSign, ShoppingBag } from 'lucide-react';
+import { Save, X, FileText, Briefcase, CreditCard, User, Plus, Ruler, Tag, Hash, ShieldCheck, MapPin, Calendar, DollarSign, ShoppingBag, ChevronDown, Search } from 'lucide-react';
 
 interface NewPurchaseFormProps {
     onSave: (purchase: Purchase) => void;
@@ -9,14 +10,83 @@ interface NewPurchaseFormProps {
     suppliers: Supplier[];
     products: Product[];
     warehouses: Warehouse[];
+    workLocations?: WorkLocation[];
     initialData?: Partial<Purchase>;
     currentUser?: string;
     currentUserId?: string;
     currentCompany?: Company;
 }
 
+const SearchableSelect = ({ label, value, onChange, options, disabled, placeholder, className = "" }: { label: string, value: string, onChange: (val: string) => void, options: { value: string, label: string }[], disabled?: boolean, placeholder?: string, className?: string }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const filteredOptions = useMemo(() =>
+        options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase())),
+        [options, searchTerm]);
+
+    const selectedOption = options.find(opt => opt.value === value);
+
+    // REMOVED useClickOutside to stay open until selection
+    // useClickOutside(containerRef, () => setIsOpen(false));
+
+    return (
+        <div className={`mb-4 relative ${className}`} ref={containerRef}>
+            <label className="text-sm font-bold text-slate-700 block mb-1 leading-tight">
+                {label}
+            </label>
+            <div
+                onClick={() => !disabled && setIsOpen(true)}
+                className={`w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-sm flex justify-between items-center transition-all ${disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white text-slate-800 hover:border-blue-400 cursor-pointer'}`}
+            >
+                <span className="truncate uppercase">{selectedOption ? selectedOption.label : (placeholder || `Selecione ${label}...`)}</span>
+                <ChevronDown size={16} className={`shrink-0 transition-transform text-slate-400 ${isOpen ? 'rotate-180' : ''} ml-2`} />
+            </div>
+            {isOpen && (
+                <div className="absolute z-[100] w-full min-w-[250px] mt-1 bg-white border border-slate-300 rounded-lg shadow-2xl animate-in fade-in slide-in-from-top-2">
+                    <div className="p-2 border-b bg-slate-50">
+                        <div className="relative">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <input
+                                autoFocus
+                                className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-bold"
+                                placeholder="Pesquisar..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+                    </div>
+                    {/* Removed max-h-60 and overflow-y-auto to show all items without scrollbar */}
+                    <div className="">
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map(opt => (
+                                <div
+                                    key={opt.value}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onChange(opt.value);
+                                        setIsOpen(false);
+                                        setSearchTerm('');
+                                    }}
+                                    className={`px-4 py-2.5 text-sm font-bold cursor-pointer transition-colors border-b border-slate-50 last:border-0 whitespace-normal ${value === opt.value ? 'bg-blue-600 text-white' : 'hover:bg-blue-50 text-slate-700'}`}
+                                >
+                                    {opt.label}
+                                </div>
+                            ))
+                        ) : (
+                            <div className="px-4 py-4 text-sm text-slate-400 italic text-center">Nenhum resultado encontrado</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const NewPurchaseForm: React.FC<NewPurchaseFormProps> = ({
-    onSave, onCancel, suppliers, products, warehouses, initialData, currentUser, currentCompany
+    onSave, onCancel, suppliers, products, warehouses, workLocations = [], initialData, currentUser, currentCompany
 }) => {
     const [activeTab, setActiveTab] = useState<'DOCUMENT' | 'SUPPLIER' | 'ITEMS' | 'FINANCIAL'>('DOCUMENT');
 
@@ -26,6 +96,7 @@ const NewPurchaseForm: React.FC<NewPurchaseFormProps> = ({
         documentNumber: initialData?.documentNumber || '',
         hash: (initialData as any)?.hash || (initialData as any)?.documentHash || '',
         warehouseId: initialData?.warehouseId || '',
+        workLocationId: (initialData as any)?.workLocationId || '',
         paymentMethod: initialData?.paymentMethod || '' as PaymentMethod | '',
         date: initialData?.date || new Date().toISOString().split('T')[0],
         dueDate: initialData?.dueDate || new Date().toISOString().split('T')[0],
@@ -109,6 +180,7 @@ const NewPurchaseForm: React.FC<NewPurchaseFormProps> = ({
             status: 'PENDING',
             notes: formData.notes,
             warehouseId: formData.warehouseId,
+            workLocationId: formData.workLocationId,
             paymentMethod: formData.paymentMethod || undefined,
             cashRegisterId: (initialData as any)?.cashRegisterId
         };
@@ -128,25 +200,6 @@ const NewPurchaseForm: React.FC<NewPurchaseFormProps> = ({
                 className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold"
                 required={required}
             />
-        </div>
-    );
-
-    const SelectField = ({ label, field, options, required = false }: { label: string, field: string, options: { value: string, label: string }[], required?: boolean }) => (
-        <div className="mb-4">
-            <label className="block text-sm font-bold text-slate-700 mb-1">
-                {label} {required && <span className="text-red-500">*</span>}
-            </label>
-            <select
-                value={(formData as any)[field] || ''}
-                onChange={(e) => handleChange(field, e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold bg-white"
-                required={required}
-            >
-                <option value="">Selecione...</option>
-                {options.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-            </select>
         </div>
     );
 
@@ -189,30 +242,40 @@ const NewPurchaseForm: React.FC<NewPurchaseFormProps> = ({
                     <form id="purchase-form" onSubmit={handleSubmit}>
                         {activeTab === 'DOCUMENT' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
-                                <SelectField
+                                <SearchableSelect
                                     label="Tipo de Documento"
-                                    field="purchaseType"
+                                    value={formData.purchaseType}
                                     options={Object.values(PurchaseType).map(t => ({ value: t, label: t }))}
-                                    required
+                                    onChange={(val) => handleChange('purchaseType', val)}
                                 />
                                 <InputField label="Número do Documento" field="documentNumber" required />
                                 <InputField label="Código Hash (AGT)" field="hash" />
-                                <SelectField
+                                <SearchableSelect
                                     label="Armazém de Destino"
-                                    field="warehouseId"
+                                    value={formData.warehouseId}
                                     options={warehouses.map(w => ({ value: w.id, label: w.name }))}
+                                    onChange={(val) => handleChange('warehouseId', val)}
+                                    placeholder="Sem Armazém Associado"
+                                />
+                                <SearchableSelect
+                                    label="Local de Trabalho"
+                                    value={formData.workLocationId}
+                                    options={workLocations.map(w => ({ value: w.id, label: w.name }))}
+                                    onChange={(val) => handleChange('workLocationId', val)}
+                                    placeholder="Sem Local Associado"
                                 />
                                 <InputField label="Data de Emissão" field="date" type="date" required />
                                 <InputField label="Data de Vencimento" field="dueDate" type="date" />
-                                <SelectField
+                                <SearchableSelect
                                     label="Forma de Pagamento"
-                                    field="paymentMethod"
+                                    value={formData.paymentMethod}
                                     options={[
                                         { value: 'CASH', label: 'Dinheiro (AOA)' },
                                         { value: 'MULTICAIXA', label: 'Multicaixa' },
                                         { value: 'TRANSFER', label: 'Transferência' },
                                         { value: 'OTHERS', label: 'Outros' }
                                     ]}
+                                    onChange={(val) => handleChange('paymentMethod', val)}
                                 />
                             </div>
                         )}
@@ -220,11 +283,12 @@ const NewPurchaseForm: React.FC<NewPurchaseFormProps> = ({
                         {activeTab === 'SUPPLIER' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
                                 <div className="col-span-2">
-                                    <SelectField
-                                        label="Fornecedor"
-                                        field="supplierId"
+                                    <SearchableSelect
+                                        label="Fornecedor *"
+                                        value={formData.supplierId}
                                         options={suppliers.map(s => ({ value: s.id, label: `${s.name} (NIF: ${s.vatNumber})` }))}
-                                        required
+                                        onChange={(val) => handleChange('supplierId', val)}
+                                        placeholder="Pesquisar fornecedor..."
                                     />
                                 </div>
                             </div>
@@ -247,54 +311,80 @@ const NewPurchaseForm: React.FC<NewPurchaseFormProps> = ({
                                     {items.map((item, index) => (
                                         <div key={item.id} className="p-4 bg-white rounded-lg border border-slate-200 shadow-sm transition-all hover:border-blue-300 group">
                                             <div className="grid grid-cols-12 gap-3 items-center">
-                                                <div className="col-span-5">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Descrição do item..."
-                                                        value={item.description}
-                                                        onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                                                        className="w-full px-3 py-1.5 border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-bold text-sm"
+                                                <div className="col-span-12 md:col-span-4">
+                                                    <SearchableSelect
+                                                        label={`Artigo ${index + 1}`}
+                                                        value={item.productId || ''}
+                                                        options={products.map(p => ({ value: p.id, label: `${p.name} | STOCK: ${p.stock}` }))}
+                                                        onChange={(val) => {
+                                                            const product = products.find(p => p.id === val);
+                                                            if (product) {
+                                                                const newItems = [...items];
+                                                                newItems[index] = {
+                                                                    ...newItems[index],
+                                                                    productId: product.id,
+                                                                    description: product.name,
+                                                                    unit: product.unit || 'un',
+                                                                    unitPrice: product.costPrice || 0
+                                                                };
+                                                                setItems(newItems);
+                                                            }
+                                                        }}
+                                                        placeholder="Selecione Artigo..."
+                                                        className="mb-0"
                                                     />
                                                 </div>
-                                                <div className="col-span-2">
+                                                <div className="col-span-6 md:col-span-3">
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Descrição Alternativa</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Descrição..."
+                                                        value={item.description}
+                                                        onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                                                        className="w-full px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-bold text-sm"
+                                                    />
+                                                </div>
+                                                <div className="col-span-3 md:col-span-1">
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Qtd</label>
                                                     <input
                                                         type="number"
                                                         placeholder="Qtd"
                                                         value={item.quantity}
                                                         onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                                                        className="w-full px-3 py-1.5 border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-bold text-sm"
+                                                        className="w-full px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-bold text-sm"
                                                     />
                                                 </div>
-                                                <div className="col-span-2">
+                                                <div className="col-span-3 md:col-span-2">
+                                                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Preço Un.</label>
                                                     <input
                                                         type="number"
                                                         placeholder="Preço"
                                                         value={item.unitPrice}
                                                         onChange={(e) => handleItemChange(index, 'unitPrice', Number(e.target.value))}
-                                                        className="w-full px-3 py-1.5 border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-bold text-sm"
+                                                        className="w-full px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-bold text-sm"
                                                     />
                                                 </div>
-                                                <div className="col-span-2">
-                                                    <div className="px-3 py-1.5 bg-slate-50 border border-slate-100 rounded text-right font-mono font-bold text-slate-600 text-sm">
+                                                <div className="col-span-12 md:col-span-2 flex items-center justify-between mt-6 md:mt-0">
+                                                    <div className="px-3 py-2 bg-slate-50 border border-slate-100 rounded text-right font-mono font-bold text-slate-600 text-sm">
                                                         {formatCurrency(item.total)}
                                                     </div>
-                                                </div>
-                                                <div className="col-span-1 flex items-center gap-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleItemChange(index, 'showMetrics', !item.showMetrics)}
-                                                        className={`p-1.5 rounded transition-all ${item.showMetrics ? 'bg-blue-100 text-blue-600' : 'text-slate-300 hover:text-blue-500'}`}
-                                                        title="Dimensões"
-                                                    >
-                                                        <Ruler size={16} />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRemoveItem(index)}
-                                                        className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"
-                                                    >
-                                                        <X size={16} />
-                                                    </button>
+                                                    <div className="flex gap-1 ml-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleItemChange(index, 'showMetrics', !item.showMetrics)}
+                                                            className={`p-1.5 rounded transition-all ${item.showMetrics ? 'bg-blue-100 text-blue-600' : 'text-slate-300 hover:text-blue-500'}`}
+                                                            title="Dimensões"
+                                                        >
+                                                            <Ruler size={16} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveItem(index)}
+                                                            className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -328,14 +418,15 @@ const NewPurchaseForm: React.FC<NewPurchaseFormProps> = ({
                         {activeTab === 'FINANCIAL' && (
                             <div className="space-y-6 animate-in fade-in">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <SelectField
+                                    <SearchableSelect
                                         label="Moeda"
-                                        field="currency"
+                                        value={formData.currency}
                                         options={[
                                             { value: 'AOA', label: 'AOA (Kwanzas)' },
                                             { value: 'USD', label: 'USD (Dólares)' },
                                             { value: 'EUR', label: 'EUR (Euros)' }
                                         ]}
+                                        onChange={(val) => handleChange('currency', val)}
                                     />
                                     <InputField label="Taxa de Câmbio" field="exchangeRate" type="number" />
                                     <InputField label="Desconto Global (%)" field="globalDiscount" type="number" />
