@@ -93,7 +93,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, onDelete, onUpdate,
 
     // Helper Functions
     const getStatusColor = (invoice: Invoice) => {
-        if (invoice.status === InvoiceStatus.CANCELLED) return 'bg-red-50 text-red-600 border-red-200';
+        if (invoice.status === InvoiceStatus.CANCELLED) return 'bg-red-600 text-white border-red-700 font-black';
         if (invoice.type === InvoiceType.NC) return 'bg-purple-100 text-purple-700 border-purple-200';
 
         // Regra: Orçamentos e Pró-formas são sempre Pendentes se não anulados
@@ -433,7 +433,14 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, onDelete, onUpdate,
                     </div>
                 </div>
 
-                <div id="print-area" className={`bg-white shadow-2xl my-8 p-12 relative flex flex-col justify-between ${isA4 ? 'w-[210mm] min-h-[297mm]' : 'w-full'}`}>
+                <div id="print-area" className={`bg-white shadow-2xl my-8 p-12 relative flex flex-col justify-between ${isA4 ? 'w-[210mm] min-h-[297mm]' : 'w-full'} overflow-hidden`}>
+                    {printingInvoice.status === InvoiceStatus.CANCELLED && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[100] opacity-[0.08]">
+                            <span className="text-[180px] font-black uppercase text-red-600 -rotate-[35deg] border-[20px] border-red-600 px-10 whitespace-nowrap">
+                                ANULADO
+                            </span>
+                        </div>
+                    )}
                     <div className="relative z-10">
                         <div className="flex justify-between items-start mb-8">
                             <div className="w-2/3">
@@ -1032,16 +1039,16 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, onDelete, onUpdate,
                                     <tr key={invoice.id} className="hover:bg-blue-50 transition-colors">
                                         <td className={`px-4 py-2 ${isCancelled ? 'text-red-600' : ''}`}>{formatDate(invoice.date)}</td>
                                         <td className="px-4 py-2 font-bold text-slate-600">{invoice.type}</td>
-                                        <td className={`px-4 py-2 font-medium ${isCancelled ? 'text-red-600 line-through' : 'text-blue-600'}`}>
+                                        <td className={`px-4 py-2 font-medium ${isCancelled ? 'text-red-600 line-through opacity-50' : 'text-blue-600'}`}>
                                             <div className="flex items-center gap-1">
-                                                {invoice.isCertified && <Lock size={10} className="text-slate-400" />}
-                                                {invoice.number}
+                                                {invoice.isCertified ? <Lock size={12} className="text-blue-600" /> : <Edit3 size={12} className="text-slate-300" />}
+                                                {invoice.number || 'RASCUNHO'}
                                             </div>
                                         </td>
                                         <td className="px-4 py-2">
                                             <div className="flex items-center gap-2">
-                                                {invoice.clientName}
-                                                {isCancelled && <span className="text-[10px] font-bold text-red-600 uppercase border border-red-200 bg-red-50 px-1 rounded">ANULADO</span>}
+                                                <span className={`font-bold ${isCancelled ? 'text-red-400 line-through' : 'text-slate-700'}`}>{invoice.clientName}</span>
+                                                {isCancelled && <span className="text-[9px] font-black text-white bg-red-600 uppercase px-1.5 py-0.5 rounded shadow-sm animate-pulse">ANULADO</span>}
                                             </div>
                                             <div className="text-[10px] text-slate-400 flex flex-wrap gap-2">
                                                 <span>{invoice.clientNif || '-'}</span>
@@ -1097,7 +1104,7 @@ const InvoiceList: React.FC<InvoiceListProps> = ({ invoices, onDelete, onUpdate,
                     </table>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

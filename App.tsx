@@ -455,71 +455,81 @@ const App: React.FC = () => {
         const original = invoices.find(i => i.id === id);
         if (!original) return;
 
-        // 1. Cancel Original
+        // 1. Mark Original as Cancelled
         const updatedOriginal = { ...original, status: InvoiceStatus.CANCELLED, cancellationReason: reason };
 
-        // 2. Auto-Generate NC
-        let newNC: Invoice | null = null;
-        let updatedSeries = [...series];
+        // 2. Logic for Certified Documents (AGT Laws)
+        if (original.isCertified) {
+            let derivedDoc: Invoice | null = null;
+            let targetType = InvoiceType.NC; // Default: NC (Nota de Crédito)
 
-        if (original.isCertified && original.type !== InvoiceType.NC) {
-            const seriesId = original.seriesId;
-            const docSeries = series.find(s => s.id === seriesId);
-
-            if (docSeries) {
-                try {
-                    // Get Sequential Number for NC
-                    const nextNumRes = await import('./services/backendAssistant').then(m => m.BackendAssistant.series.proximoNumero(seriesId, InvoiceType.NC));
-
-                    if (nextNumRes.success && nextNumRes.data) {
-                        const number = nextNumRes.data.number;
-
-                        newNC = {
-                            ...original,
-                            id: generateId(),
-                            type: InvoiceType.NC,
-                            number,
-                            date: new Date().toISOString().split('T')[0],
-                            time: new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
-                            status: InvoiceStatus.PAID, // NC is final
-                            sourceInvoiceId: original.id,
-                            notes: `Estorno referente a anulação do documento ${original.number}. Motivo: ${reason}`,
-                            hash: generateInvoiceHash({ ...original, uniqueId: generateId() }), // Simplistic hash generation
-                            createdAt: new Date().toISOString()
-                        };
-
-                        // Update series locally
-                        updatedSeries = series.map(s => s.id === seriesId ? {
-                            ...s,
-                            sequences: { ...s.sequences, [InvoiceType.NC]: nextNumRes.data.sequence }
-                        } : s);
-                    }
-                } catch (e) {
-                    console.error("Erro ao gerar NC:", e);
-                    alert("Erro ao gerar nota de crédito. Verifique a conexão.");
-                    return;
-                }
+            // IF cancelling a NC, then create a ND (Nota de Débito)
+            if (original.type === InvoiceType.NC) {
+                targetType = InvoiceType.ND;
             }
+
+            try {
+                const seriesId = original.seriesId;
+                const docSeries = series.find(s => s.id === seriesId);
+
+                if (!docSeries) throw new Error("Série não encontrada");
+
+                // Get Sequential Number from DB
+                const nextNumRes = await import('./services/backendAssistant').then(m => m.InvoiceBackend.gerarNumeroSequencial(targetType, docSeries.code, docSeries.year));
+                const nextNumber = `${targetType} ${docSeries.code}${docSeries.year}/${nextNumRes}`;
+
+                derivedDoc = {
+                    ...original,
+                    id: generateId(),
+                    type: targetType,
+                    number: nextNumber,
+                    date: new Date().toISOString().split('T')[0],
+                    time: new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
+                    status: InvoiceStatus.PAID,
+                    sourceInvoiceId: original.id,
+                    notes: `Correção automática: ${targetType === InvoiceType.NC ? 'Estorno' : 'Retificação'} do documento ${original.number}. Motivo: ${reason}`,
+                    isCertified: true,
+                    hash: generateInvoiceHash({ ...original, number: nextNumber, id: generateId() }),
+                    createdAt: new Date().toISOString()
+                };
+
+                // Update Local State with both docs
+                setInvoices(prev => [derivedDoc!, ...prev.map(i => i.id === id ? updatedOriginal : i)]);
+
+                // Persist both to Supabase
+                await IntegrationAssistant.salvarDados('vendas', updatedOriginal);
+                await IntegrationAssistant.salvarDados('vendas', derivedDoc);
+
+                alert(`${targetType} ${nextNumber} gerada com sucesso para anulação.`);
+            } catch (e: any) {
+                console.error("Erro na anulação AGT:", e);
+                alert("Falha crítica ao gerar documento de correção: " + e.message);
+                return;
+            }
+        } else {
+            // Non-certified: just update status or let it be deleted/edited
+            setInvoices(invoices.map(i => i.id === id ? updatedOriginal : i));
+            await IntegrationAssistant.salvarDados('vendas', updatedOriginal);
+        }
+    };
+
+    const handleDeleteInvoice = async (id: string) => {
+        const doc = invoices.find(i => i.id === id);
+        if (!doc) return;
+
+        if (doc.isCertified) {
+            alert("Não é possível eliminar um documento certificado pela AGT. Deve anular o documento.");
+            return;
         }
 
-        // Update Local State
-        const newInvoicesList = invoices.map(i => i.id === id ? updatedOriginal : i);
-        if (newNC) newInvoicesList.unshift(newNC);
-        setInvoices(newInvoicesList);
-        setSeries(updatedSeries);
-
-        // Save to Supabase
-        try {
-            await IntegrationAssistant.salvarDados('vendas', updatedOriginal);
-            if (newNC) {
-                await IntegrationAssistant.salvarDados('vendas', newNC);
-                const s = series.find(s => s.id === original.seriesId);
-                if (s) await IntegrationAssistant.salvarDados('series', { ...s, currentSequence: s.currentSequence + 1 });
+        if (window.confirm("Tem a certeza que deseja eliminar permanentemente este rascunho? Esta ação não pode ser desfeita.")) {
+            try {
+                // Real DB Delete
+                await import('./services/backendAssistant').then(m => m.InvoiceBackend.delete(id));
+                setInvoices(prev => prev.filter(i => i.id !== id));
+            } catch (e: any) {
+                alert("Erro ao eliminar documento: " + e.message);
             }
-            alert("Documento anulado e Nota de Crédito gerada com sucesso.");
-        } catch (error) {
-            console.error("Erro ao salvar anulação no Supabase:", error);
-            alert("Erro ao salvar alterações na nuvem.");
         }
     };
 
@@ -549,7 +559,7 @@ const App: React.FC = () => {
             case 'INVOICES':
                 return <InvoiceList
                     invoices={invoices}
-                    onDelete={(id) => setInvoices(invoices.filter(i => i.id !== id))}
+                    onDelete={handleDeleteInvoice}
                     onUpdate={handleEditInvoice}
                     onLiquidate={handleLiquidate}
                     onCancelInvoice={handleCancelInvoice}

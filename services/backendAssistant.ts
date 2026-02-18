@@ -86,7 +86,7 @@ export const InvoiceBackend = {
 
             const invoiceData = {
                 id: validId,
-                empresa_id: EMPRESA_ID,
+                empresa_id: invoice.companyId || EMPRESA_ID,
                 serie_id: ensureOptionalUUID(invoice.seriesId),
                 codigo_serie: invoice.seriesCode || 'MANUAL',
                 numero: invoice.number,
@@ -98,26 +98,18 @@ export const InvoiceBackend = {
                 cliente_id: ensureOptionalUUID(invoice.clientId),
                 cliente_nome: invoice.clientName || 'Cliente Final',
                 cliente_nif: invoice.clientNif || '999999999',
-                cliente_endereco: invoice.clientAddress,
-                cliente_email: invoice.clientEmail,
-                cliente_telefone: invoice.clientPhone,
                 subtotal: Number(invoice.subtotal || 0),
                 desconto_global: Number(invoice.globalDiscount || 0),
                 taxa_iva: Number(invoice.taxRate || 0),
                 valor_iva: Number(invoice.taxAmount || 0),
                 valor_retencao: Number(invoice.withholdingAmount || 0),
-                tipo_retencao: invoice.withholdingType,
-                percentual_retencao: Number(invoice.withholdingRate || 0),
                 total: Number(invoice.total || 0),
                 valor_pago: Number(invoice.paidAmount || 0),
                 moeda: invoice.currency || 'AOA',
                 taxa_cambio: Number(invoice.exchangeRate || 1),
-                valor_contravalor: Number(invoice.counterValue || 0),
                 status: invoice.status || 'Rascunho',
-                certificado: invoice.certified || false,
+                certificado: invoice.isCertified || false,
                 hash: invoice.hash,
-                hash_anterior: invoice.previousHash,
-                qr_code: invoice.qrCode,
                 metodo_pagamento: invoice.paymentMethod,
                 caixa_id: ensureOptionalUUID(invoice.cashRegisterId),
                 local_trabalho_id: ensureOptionalUUID(invoice.workLocationId),
@@ -125,15 +117,7 @@ export const InvoiceBackend = {
                 operador_nome: invoice.operatorName,
                 tipologia: invoice.typology || 'Geral',
                 origem: invoice.source || 'MANUAL',
-                anexo: invoice.attachment,
-                documento_origem_id: ensureOptionalUUID(invoice.sourceInvoiceId),
-                motivo_anulacao: invoice.cancellationReason,
-                status_integracao: invoice.integrationStatus,
-                processado_em: invoice.processedAt,
-                observacoes: invoice.notes,
-                notas_internas: invoice.internalNotes,
-                itens: invoice.items, // Pass as JSONB directly, Supabase client handles it if column is jsonb
-                created_by: ensureOptionalUUID(invoice.createdBy),
+                itens: invoice.items,
                 updated_at: new Date().toISOString()
             };
 
@@ -152,6 +136,58 @@ export const InvoiceBackend = {
             };
         } catch (error: any) {
             console.error('Erro ao salvar fatura:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    },
+
+    /**
+     * Gerar número sequencial oficial via RPC
+     */
+    async gerarNumeroSequencial(tipoDoc: string, serie: string, ano: number): Promise<number> {
+        const { data, error } = await supabase.rpc('get_next_document_number', {
+            p_tipo_documento: tipoDoc,
+            p_serie: serie,
+            p_ano: ano
+        });
+
+        if (error) {
+            console.error('Erro ao gerar sequência documental:', error);
+            throw error;
+        }
+
+        return data;
+    },
+
+    /**
+     * Certificar um rascunho de fatura
+     */
+    async certificar(id: string, updates: any): Promise<BackendResponse> {
+        try {
+            const { data, error } = await supabase
+                .from('faturas')
+                .update({
+                    ...updates,
+                    certificado: true,
+                    status_integracao: 'VALIDATED',
+                    processado_em: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            return {
+                success: true,
+                data,
+                message: 'Fatura certificada com sucesso'
+            };
+        } catch (error: any) {
+            console.error('Erro ao certificar fatura:', error);
             return {
                 success: false,
                 error: error.message
@@ -402,67 +438,55 @@ export const SeriesBackend = {
     },
 
     /**
-     * Obter próximo número da série
+     * Obter próximo número da série (Versão AGT Robusta)
      */
     async getNextNumber(seriesId: string, docType: string): Promise<BackendResponse> {
         try {
-            const { data: series, error } = await supabase
+            const { data: series, error: seriesError } = await supabase
                 .from('series')
                 .select('*')
                 .eq('id', seriesId)
                 .single();
 
-            if (error) throw error;
-            if (!series) throw new Error('Série não encontrada');
+            if (seriesError || !series) throw new Error('Série não encontrada');
 
-            const sequences = typeof series.sequencias === 'string'
-                ? JSON.parse(series.sequencias)
-                : series.sequencias || {};
+            // Chamada RPC para garantir atomicidade e conformidade AGT
+            const { data: sequence, error: rpcError } = await supabase.rpc('get_next_document_number', {
+                p_tipo_documento: docType,
+                p_serie: series.codigo,
+                p_ano: series.ano
+            });
 
-            // If specific type sequence exists, use it.
-            // If NOT, we start fresh at 0 (so next is 1), unless it's the main type matching currentSequence?
-            // Safer approach: If key exists, use it. If not, start at 0.
-            // Exception: Legacy support for the 'main' type might rely on sequencia_atual.
+            if (rpcError) throw rpcError;
 
-            let currentSeq = 0;
-            if (sequences[docType] !== undefined) {
-                currentSeq = sequences[docType];
-            } else if (docType === series.tipo) {
-                // If the doc type matches the series main type (e.g. NORMAL series for FT), maybe use legacy field
-                currentSeq = series.sequencia_atual || 0;
-            } else {
-                currentSeq = 0;
+            // Formato AGT: [SÉRIE] [ANO]/[SEQUÊNCIA] (Ex: AGT 2026/000001)
+            const docNumber = `${series.codigo} ${series.ano}/${String(sequence).padStart(6, '0')}`;
+
+            // Check for duplicates in 'faturas' table before returning
+            const { count, error: countError } = await supabase
+                .from('faturas')
+                .select('id', { count: 'exact', head: true })
+                .eq('numero', docNumber)
+                .eq('tipo', docType);
+
+            if (countError) throw countError;
+            if (count && count > 0) {
+                // Se der duplicado (improvável com RPC mas possível na migração), tenta novo
+                console.warn(`Número duplicado detectado: ${docNumber}. Tentando re-sincronizar...`);
+                return this.getNextNumber(seriesId, docType);
             }
-
-            const nextSeq = currentSeq + 1;
-
-            // Atualizar sequência
-            sequences[docType] = nextSeq;
-
-            await supabase
-                .from('series')
-                .update({
-                    sequencias: JSON.stringify(sequences),
-                    // Only update legacy field if it's the main type, or keep it as a 'latest' indicator?
-                    // Let's keep it as max or just ignore it for new types.
-                    // Ideally, we sync it if it matches main type. For now, let's just update valid sequences json.
-                    sequencia_atual: (docType === series.tipo) ? nextSeq : series.sequencia_atual
-                })
-                .eq('id', seriesId);
-
-            const nextNumber = `${series.codigo} ${series.ano}/${String(currentSeq).padStart(6, '0')}`;
 
             return {
                 success: true,
                 data: {
-                    number: nextNumber,
-                    sequence: currentSeq,
+                    number: docNumber,
+                    sequence: sequence,
                     code: series.codigo,
                     year: series.ano
                 }
             };
         } catch (error: any) {
-            console.error('Erro ao obter próximo número:', error);
+            console.error('Erro ao gerar sequência documental:', error);
             return {
                 success: false,
                 error: error.message
@@ -657,7 +681,9 @@ const BackendAssistant = {
         listar: InvoiceBackend.fetchAll,
         criar: InvoiceBackend.save,
         atualizar: (_id: string, data: any) => InvoiceBackend.save(data),
-        excluir: InvoiceBackend.delete
+        excluir: InvoiceBackend.delete,
+        gerarNumeroSequencial: InvoiceBackend.gerarNumeroSequencial,
+        certificar: InvoiceBackend.certificar
     },
     compras: {
         listar: PurchaseBackend.fetchAll,

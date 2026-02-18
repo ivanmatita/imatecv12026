@@ -198,80 +198,81 @@ export async function getTransferOrders(month?: number, year?: number) {
 
 // ================= EMPLOYEES =================
 export async function getEmployees() {
-    const { data, error } = await supabase.from('employees').select('*');
+    const { data, error } = await supabase.from('funcionarios').select('*');
     if (error) throw error;
 
     return data.map((d: any) => ({
         id: d.id,
-        name: d.name,
+        name: d.nome,
         nif: d.nif,
-        idCardNumber: d.id_card_number,
-        birthDate: d.birth_date,
-        gender: d.gender,
-        maritalStatus: d.marital_status,
-        nationality: d.nationality,
+        idCardNumber: d.bi_number,
+        birthDate: d.data_nascimento,
+        gender: d.genero,
+        maritalStatus: d.estado_civil,
+        nationality: d.nacionalidade,
         email: d.email,
-        phone: d.phone,
-        address: d.address,
+        phone: d.telefone,
+        address: d.endereco,
         employeeNumber: d.employee_number,
-        role: d.role,
-        department: d.department,
-        admissionDate: d.admission_date,
-        contractType: d.contract_type,
+        role: d.cargo,
+        department: d.departamento,
+        admissionDate: d.data_admissao,
+        contractType: d.tipo_contrato,
         workLocationId: d.work_location_id,
         professionId: d.profession_id,
         status: d.status,
-        baseSalary: d.base_salary,
-        bankName: d.bank_name,
+        baseSalary: Number(d.salario_base || 0),
+        bankName: d.nome_banco,
         iban: d.iban,
-        paymentMethod: d.payment_method,
-        socialSecurityNumber: d.social_security_number,
-        subsidyFood: d.subsidy_food,
-        subsidyTransport: d.subsidy_transport,
-        subsidyFamily: d.subsidy_family,
-        subsidyHousing: d.subsidy_housing,
-        allowances: d.allowances,
-        photoUrl: d.photo_url
+        paymentMethod: d.metodo_pagamento,
+        socialSecurityNumber: d.ssn,
+        subsidyFood: Number(d.subs_alimentacao || 0),
+        subsidyTransport: Number(d.subs_transporte || 0),
+        subsidyFamily: Number(d.subs_familia || 0),
+        subsidyHousing: Number(d.subs_habitacao || 0),
+        allowances: Number(d.abonos || 0),
+        photoUrl: d.foto_url
     })) as Employee[];
 }
 
 export async function saveEmployee(emp: Employee) {
     const dbEmp = {
         id: emp.id,
-        name: emp.name,
+        nome: emp.name,
         nif: emp.nif,
-        id_card_number: emp.idCardNumber,
-        birth_date: emp.birthDate,
-        gender: emp.gender,
-        marital_status: emp.maritalStatus,
-        nationality: emp.nationality,
+        bi_number: emp.idCardNumber,
+        data_nascimento: emp.birthDate,
+        genero: emp.gender,
+        estado_civil: emp.maritalStatus,
+        nacionalidade: emp.nationality,
         email: emp.email,
-        phone: emp.phone,
-        address: emp.address,
+        telefone: emp.phone,
+        endereco: emp.address,
         employee_number: emp.employeeNumber,
-        role: emp.role,
-        department: emp.department,
-        admission_date: emp.admissionDate,
-        contract_type: emp.contractType,
+        cargo: emp.role,
+        departamento: emp.department,
+        data_admissao: emp.admissionDate,
+        tipo_contrato: emp.contractType,
         work_location_id: emp.workLocationId,
         profession_id: emp.professionId,
         status: emp.status,
-        base_salary: emp.baseSalary,
-        bank_name: emp.bankName,
+        salario_base: Number(emp.baseSalary),
+        nome_banco: emp.bankName,
         iban: emp.iban,
-        payment_method: emp.paymentMethod,
-        social_security_number: emp.socialSecurityNumber,
-        subsidy_food: emp.subsidyFood,
-        subsidy_transport: emp.subsidyTransport,
-        subsidy_family: emp.subsidyFamily,
-        subsidy_housing: emp.subsidyHousing,
-        allowances: emp.allowances,
-        photo_url: emp.photoUrl,
-        updated_at: new Date().toISOString()
+        metodo_pagamento: emp.paymentMethod,
+        ssn: emp.socialSecurityNumber,
+        subs_alimentacao: Number(emp.subsidyFood || 0),
+        subs_transporte: Number(emp.subsidyTransport || 0),
+        subs_familia: Number(emp.subsidyFamily || 0),
+        subs_habitacao: Number(emp.subsidyHousing || 0),
+        abonos: Number(emp.allowances || 0),
+        foto_url: emp.photoUrl,
+        updated_at: new Date().toISOString(),
+        empresa_id: '00000000-0000-0000-0000-000000000001'
     };
 
     const { data, error } = await supabase
-        .from('employees')
+        .from('funcionarios')
         .upsert(dbEmp)
         .select()
         .single();
@@ -282,7 +283,7 @@ export async function saveEmployee(emp: Employee) {
 
 export async function deleteEmployee(id: string) {
     const { error } = await supabase
-        .from('employees')
+        .from('funcionarios')
         .delete()
         .eq('id', id);
 

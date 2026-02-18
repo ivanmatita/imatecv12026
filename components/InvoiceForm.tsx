@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Client, Invoice, InvoiceItem, InvoiceStatus, InvoiceType, Product, WorkLocation, PaymentMethod, CashRegister, DocumentSeries, Warehouse, Company, TaxRate, Metric } from '../types';
 import { generateId, formatCurrency, formatDate, generateQrCodeUrl, numberToExtenso } from '../utils';
 import { supabase } from '../services/supabaseClient';
-import { Plus, Trash, Save, ArrowLeft, Lock, FileText, List, X, Calendar, CreditCard, ChevronDown, ChevronUp, Ruler, Users, Briefcase, Percent, DollarSign, RefreshCw, Scale, ShieldCheck, Hash, Tag, UserPlus, Loader2, Package, AlertCircle, MapPin } from 'lucide-react';
+import { Plus, Trash, Save, ArrowLeft, Lock, FileText, List, X, Calendar, CreditCard, ChevronDown, ChevronUp, Ruler, Users, Briefcase, Percent, DollarSign, RefreshCw, Scale, ShieldCheck, Hash, Tag, UserPlus, Loader2, Package, AlertCircle, MapPin, Search } from 'lucide-react';
 
 interface InvoiceFormProps {
     onSave: (invoice: Invoice, seriesId: string, action?: 'PRINT' | 'CERTIFY') => void;
@@ -26,6 +26,101 @@ interface InvoiceFormProps {
     taxRates?: TaxRate[];
     metrics?: Metric[];
 }
+
+// --- SEARCHABLE SELECT COMPONENT ---
+interface SearchableSelectProps {
+    options: { id: string; label: string; sublabel?: string }[];
+    value: string;
+    onChange: (id: string) => void;
+    placeholder: string;
+    disabled?: boolean;
+    className?: string;
+    label?: string;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onChange, placeholder, disabled, className, label }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const containerRef = React.useRef<HTMLDivElement>(null);
+
+    const selectedOption = options.find(o => o.id === value);
+
+    const filteredOptions = options.filter(o =>
+        o.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        o.sublabel?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+                setSearchTerm('');
+            }
+        };
+        if (isOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen]);
+
+    return (
+        <div className={`relative ${className}`} ref={containerRef}>
+            {label && <label className="text-[10px] font-bold text-slate-600 block mb-1">{label}</label>}
+            <div
+                className={`w-full border p-2.5 rounded-2xl flex items-center justify-between cursor-pointer bg-white transition-all ${isOpen ? 'border-blue-500 ring-2 ring-blue-50' : 'border-slate-300 hover:border-slate-400'} ${disabled ? 'bg-slate-50 cursor-not-allowed opacity-70' : ''}`}
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!disabled) setIsOpen(!isOpen);
+                }}
+            >
+                <span className={`text-sm ${!selectedOption ? 'text-slate-400' : 'text-slate-900 font-bold'}`}>
+                    {selectedOption ? selectedOption.label : placeholder}
+                </span>
+                <ChevronDown size={16} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </div>
+
+            {isOpen && !disabled && (
+                <div className="absolute z-[110] w-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="p-3 border-b border-slate-100 flex items-center gap-2 bg-slate-50">
+                        <Search size={14} className="text-slate-400" />
+                        <input
+                            autoFocus
+                            className="bg-transparent border-none outline-none text-xs w-full font-medium"
+                            placeholder="Pesquisar..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map(opt => (
+                                <div
+                                    key={opt.id}
+                                    className={`p-3 cursor-pointer hover:bg-blue-50 transition-colors flex flex-col ${opt.id === value ? 'bg-blue-50 border-l-4 border-blue-600' : ''}`}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onChange(opt.id);
+                                        setIsOpen(false);
+                                        setSearchTerm('');
+                                    }}
+                                >
+                                    <span className={`text-[11px] font-black uppercase ${opt.id === value ? 'text-blue-700' : 'text-slate-700'}`}>{opt.label}</span>
+                                    {opt.sublabel && <span className="text-[9px] text-slate-500 font-bold">{opt.sublabel}</span>}
+                                </div>
+                            ))
+                        ) : (
+                            <div className="p-4 text-center text-slate-400 text-xs italic">Nenhum resultado encontrado</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 const InvoiceForm: React.FC<InvoiceFormProps> = ({
     onSave, onCancel, onViewList, onSaveClient, onSaveWorkLocation, clients, products, workLocations, cashRegisters, series, warehouses = [],
@@ -77,7 +172,7 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
     const allowedSeries = useMemo(() => series.filter(s => s.isActive), [series]);
     const selectedSeriesObj = useMemo(() => series.find(s => s.id === selectedSeriesId), [series, selectedSeriesId]);
     const isManualSeries = selectedSeriesObj?.type === 'MANUAL';
-    const showPaymentFields = (invoiceType === InvoiceType.FR || invoiceType === InvoiceType.RG || invoiceType === InvoiceType.VD);
+    const showPaymentFields = (invoiceType === InvoiceType.FR || invoiceType === InvoiceType.RG || invoiceType === InvoiceType.VD); // Fatura Recibo, Recibo, Venda a Dinheiro
 
     const [items, setItems] = useState<InvoiceItem[]>(() => {
         const rawItems = initialData?.items || [];
@@ -137,15 +232,11 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
     const subtotal = items.reduce((acc, item) => acc + item.total, 0);
     const taxAmount = items.reduce((acc, item) => acc + (item.total * (item.taxRate / 100)), 0);
 
-    useEffect(() => {
-        if (!isRestricted) {
-            const hasService = items.some(item => item.type === 'SERVICE');
-            if (hasService && subtotal > 20000) setHasWithholding(true);
-            else setHasWithholding(false);
-        }
-    }, [items, subtotal, isRestricted]);
-
-    const withholdingAmount = hasWithholding ? subtotal * 0.065 : 0;
+    const withholdingAmount = items.reduce((acc, item) => {
+        const isService = item.type === 'SERVICE' || item.typology === 'Serviço';
+        const lineTotal = item.quantity * (item.length || 1) * (item.width || 1) * (item.height || 1) * item.unitPrice * (1 - (item.discount / 100));
+        return isService && lineTotal > 20000 ? acc + (lineTotal * 0.065) : acc;
+    }, 0);
 
     const retentionAmount = useMemo(() => {
         if (retentionType === 'CAT_50') return taxAmount * 0.5;
@@ -423,10 +514,10 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                 </div>
 
                                 {showPaymentFields && (
-                                    <>
+                                    <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-emerald-50/30 rounded-2xl border border-emerald-100 animate-in slide-in-from-top-2">
                                         <div>
-                                            <label className="text-[10px] font-bold text-emerald-600 uppercase block mb-1">Forma Pagamento</label>
-                                            <select className="w-full border border-emerald-200 p-2.5 rounded-2xl bg-emerald-50 outline-none" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}>
+                                            <label className="text-[10px] font-bold text-emerald-600 uppercase block mb-1 flex items-center gap-1"><CreditCard size={10} /> Forma Pagamento</label>
+                                            <select className="w-full border border-emerald-200 p-2.5 rounded-2xl bg-white outline-none font-bold" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} required={showPaymentFields}>
                                                 <option value="">Selecione...</option>
                                                 <option value="CASH">Dinheiro (AOA)</option>
                                                 <option value="MULTICAIXA">Multicaixa</option>
@@ -435,13 +526,13 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="text-[10px] font-bold text-emerald-600 uppercase block mb-1">Caixa de Recebimento</label>
-                                            <select className="w-full border border-emerald-200 p-2.5 rounded-2xl bg-emerald-50 outline-none" value={cashRegisterId} onChange={e => setCashRegisterId(e.target.value)}>
+                                            <label className="text-[10px] font-bold text-emerald-600 uppercase block mb-1 flex items-center gap-1"><MapPin size={10} /> Caixa de Recebimento</label>
+                                            <select className="w-full border border-emerald-200 p-2.5 rounded-2xl bg-white outline-none font-bold" value={cashRegisterId} onChange={e => setCashRegisterId(e.target.value)} required={showPaymentFields}>
                                                 <option value="">Selecione...</option>
                                                 {cashRegisters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                             </select>
                                         </div>
-                                    </>
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -456,23 +547,31 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                         {expandedSections.clientData && (
                             <div className="p-6 bg-white animate-in slide-in-from-top-2 space-y-4">
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Cliente *</label>
-                                    <select className={`w-full border p-3 rounded-2xl outline-none ${!clientId ? 'border-red-300' : 'border-slate-300'}`} value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={isRestricted}>
-                                        <option value="">-- SELECIONAR CLIENTE (GESTÃO DE CLIENTES) * --</option>
-                                        {clients.map(c => <option key={c.id} value={c.id}>{c.name} (NIF: {c.vatNumber})</option>)}
-                                    </select>
+                                    <SearchableSelect
+                                        label="Cliente *"
+                                        placeholder="Pesquisar cliente por nome ou NIF..."
+                                        options={clients.map(c => ({ id: c.id, label: c.name, sublabel: `NIF: ${c.vatNumber}` }))}
+                                        value={clientId}
+                                        onChange={setClientId}
+                                        disabled={isRestricted}
+                                        className={!clientId ? 'ring-1 ring-red-300 rounded-2xl' : ''}
+                                    />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Série Fiscal *</label>
-                                        <select className={`w-full border p-2.5 rounded-2xl outline-none ${!selectedSeriesId ? 'border-red-300' : 'border-slate-300'}`} value={selectedSeriesId} onChange={(e) => setSelectedSeriesId(e.target.value)} disabled={isRestricted}>
-                                            <option value="">Selecione Série...</option>
-                                            {allowedSeries.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code}) - {s.type}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            label="Série Fiscal *"
+                                            placeholder="Selecionar série..."
+                                            options={allowedSeries.map(s => ({ id: s.id, label: `${s.name} (${s.code})`, sublabel: `Tipo: ${s.type} | Ano: ${s.year}` }))}
+                                            value={selectedSeriesId}
+                                            onChange={setSelectedSeriesId}
+                                            disabled={isRestricted}
+                                            className={!selectedSeriesId ? 'ring-1 ring-red-300 rounded-2xl' : ''}
+                                        />
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-bold text-slate-600 block mb-1">Local de Trabalho</label>
-                                        <select className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none focus:border-blue-500 bg-slate-50" value={workLocationId} onChange={e => setWorkLocationId(e.target.value)} disabled={isRestricted}>
+                                        <select className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-sm" value={workLocationId} onChange={e => setWorkLocationId(e.target.value)} disabled={isRestricted}>
                                             <option value="">Sem Local Associado</option>
                                             {workLocations.map(wl => <option key={wl.id} value={wl.id}>{wl.name}</option>)}
                                         </select>
@@ -502,15 +601,13 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                         <thead className="bg-slate-100 text-slate-500 uppercase text-[10px] font-bold">
                                             <tr>
                                                 <th className="p-3 w-10 text-center"></th>
-                                                <th className="p-3 w-20">Tipo</th>
-                                                <th className="p-3 w-32">Ref</th>
+                                                <th className="p-3 w-28">Ref</th>
                                                 <th className="p-3">Artigo / Descrição</th>
-                                                <th className="p-3 w-32 text-center">Tipologia</th>
-                                                <th className="p-3 w-32 text-center bg-blue-50 text-blue-800">Data Valor</th>
-                                                <th className="p-3 w-20 text-center">Qtd</th>
-                                                <th className="p-3 w-28 text-center">Unidade</th>
-                                                <th className="p-3 w-28 text-right">Preço Un.</th>
-                                                <th className="p-3 w-32 text-center">IVA Aplicado</th>
+                                                <th className="p-3 w-20 text-center bg-blue-100 text-blue-900 border-x border-slate-200 uppercase tracking-tighter">Quantidade</th>
+                                                <th className="p-3 w-32 text-right bg-blue-100 text-blue-900 border-x border-slate-200 uppercase tracking-tighter">Valor Unitário</th>
+                                                <th className="p-3 w-32 text-center">Tipo de Artigo</th>
+                                                <th className="p-3 w-32 text-center">Taxa Imposto</th>
+                                                <th className="p-3 w-20 text-center">Unidade</th>
                                                 <th className="p-3 w-16 text-center">Desc%</th>
                                                 <th className="p-3 w-28 text-right">Total</th>
                                                 {!isRestricted && <th className="p-3 w-10"></th>}
@@ -520,72 +617,93 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                             {items.map((item, index) => (
                                                 <React.Fragment key={item.id}>
                                                     <tr className="hover:bg-blue-50/30 transition-colors">
-                                                        <td className="p-2 text-center"><button onClick={() => handleUpdateItem(index, 'showMetrics', !item.showMetrics)} className={`p-1.5 rounded-lg transition-all ${item.showMetrics ? 'bg-blue-100 text-blue-600 rotate-180' : 'bg-transparent text-transparent hover:text-slate-400'}`}><Ruler size={16} /></button></td>
-                                                        <td className="p-2"><select className="w-full bg-transparent text-[10px] font-bold text-slate-600 outline-none" value={item.type} onChange={(e) => handleUpdateItem(index, 'type', e.target.value as any)} disabled={isRestricted}><option value="PRODUCT">PROD</option><option value="SERVICE">SERV</option></select></td>
+                                                        <td className="p-2 text-center"><button onClick={() => handleUpdateItem(index, 'showMetrics', !item.showMetrics)} className={`p-1.5 rounded-lg transition-all ${item.showMetrics ? 'bg-blue-100 text-blue-600 rotate-180' : 'bg-transparent text-slate-300 hover:text-blue-400'}`}><Ruler size={16} /></button></td>
                                                         <td className="p-2"><input className="w-full p-1 border border-slate-200 rounded text-[10px] font-mono focus:ring-1 focus:ring-blue-500 outline-none" placeholder="Referência" value={item.reference || ''} onChange={e => handleUpdateItem(index, 'reference', e.target.value)} disabled={isRestricted} /></td>
                                                         <td className="p-2">
-                                                            <div className="flex flex-col gap-1">
+                                                            <div className="flex flex-col gap-1 w-full relative">
                                                                 {item.type === 'PRODUCT' && (
-                                                                    <select className="w-full p-1 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none font-bold text-blue-700 bg-blue-50" onChange={(e) => handleProductSelect(index, e.target.value)} value={item.productId || ''} disabled={isRestricted}>
-                                                                        <option value="">-- SELECIONAR ARTIGO (STOCK REAL) * --</option>
+                                                                    <select
+                                                                        className="w-full p-1.5 border border-slate-200 rounded text-[11px] focus:ring-1 focus:ring-blue-500 outline-none font-black text-blue-800 bg-blue-50/50 appearance-none"
+                                                                        onChange={(e) => handleProductSelect(index, e.target.value)}
+                                                                        value={item.productId || ''}
+                                                                        disabled={isRestricted}
+                                                                    >
+                                                                        <option value="">-- SELECIONAR ARTIGO --</option>
                                                                         {products.map(p => (
                                                                             <option key={p.id} value={p.id}>
-                                                                                {p.id.substring(0, 8).toUpperCase()} | {p.name} | {p.stock <= 0 ? 'SEM STOCK' : `STOCK: ${p.stock} ${p.unit}`} | {p.stock < 0 ? 'NEGATIVO' : 'EM STOCK'}
+                                                                                {p.name} | STOCK: {p.stock}
                                                                             </option>
                                                                         ))}
                                                                     </select>
                                                                 )}
-                                                                <input className="w-full p-1 bg-transparent border-b border-dashed border-slate-300 focus:border-blue-500 outline-none text-xs font-bold" placeholder="Descrição do item *..." value={item.description} onChange={(e) => handleUpdateItem(index, 'description', e.target.value)} disabled={isRestricted} />
+                                                                <input className="w-full p-1 bg-transparent border-b border-dashed border-slate-300 focus:border-blue-500 outline-none text-[11px] font-bold" placeholder="Descrição do item *..." value={item.description} onChange={(e) => handleUpdateItem(index, 'description', e.target.value)} disabled={isRestricted} />
                                                             </div>
                                                         </td>
-                                                        <td className="p-2">
-                                                            <select className="w-full p-1.5 border border-slate-200 rounded bg-white text-[10px] font-bold" value={item.typology || 'Geral'} onChange={(e) => handleUpdateItem(index, 'typology', e.target.value)} disabled={isRestricted}>
-                                                                <option value="Geral">Geral</option>
-                                                                <option value="Mercadoria">Mercadoria</option>
-                                                                <option value="Matéria Prima">Matéria Prima</option>
-                                                                <option value="Produto Acabado">Produto Acabado</option>
-                                                                <option value="Serviço">Serviço</option>
-                                                            </select>
+                                                        <td className="p-2 text-center bg-blue-50/50 border-x border-slate-100">
+                                                            <input
+                                                                type="number"
+                                                                className="w-full p-2 text-center border-2 border-blue-200 rounded-xl bg-white text-sm font-black text-blue-800 focus:border-blue-500 shadow-inner"
+                                                                placeholder="Qtd"
+                                                                value={item.quantity}
+                                                                onChange={(e) => handleUpdateItem(index, 'quantity', Number(e.target.value))}
+                                                                disabled={isRestricted}
+                                                            />
                                                         </td>
-                                                        <td className="p-2 bg-blue-50/30"><input type="date" className="w-full p-1 border border-blue-200 rounded text-[10px] font-bold text-center bg-white" value={item.valueDate || today} onChange={e => handleUpdateItem(index, 'valueDate', e.target.value)} disabled={isRestricted} /></td>
-                                                        <td className="p-2 text-center"><input type="number" className="w-full p-1.5 text-center border border-slate-200 rounded bg-white text-sm font-bold" value={item.quantity} onChange={(e) => handleUpdateItem(index, 'quantity', Number(e.target.value))} disabled={isRestricted} /></td>
+                                                        <td className="p-2 text-right bg-blue-50/50 border-x border-slate-100">
+                                                            <input
+                                                                type="number"
+                                                                className="w-full p-2 text-right border-2 border-blue-200 rounded-xl bg-white text-sm font-black text-blue-800 focus:border-blue-500 shadow-inner"
+                                                                placeholder="Valor Unit."
+                                                                value={item.unitPrice}
+                                                                onChange={(e) => handleUpdateItem(index, 'unitPrice', Number(e.target.value))}
+                                                                disabled={isRestricted}
+                                                            />
+                                                        </td>
                                                         <td className="p-2 text-center">
-                                                            <select className="w-full p-1.5 border border-slate-200 rounded bg-white text-[10px] font-bold" value={item.unit || 'un'} onChange={(e) => handleUpdateItem(index, 'unit', e.target.value)} disabled={isRestricted}>
-                                                                {metrics.length > 0 ? (
-                                                                    metrics.map(m => <option key={m.id} value={m.sigla}>{m.sigla}</option>)
-                                                                ) : (
-                                                                    <>
-                                                                        <option value="un">un</option>
-                                                                        <option value="kg">kg</option>
-                                                                        <option value="mês">mês</option>
-                                                                        <option value="dia">dia</option>
-                                                                    </>
-                                                                )}
-                                                            </select>
+                                                            <div className="flex border border-slate-200 rounded-lg overflow-hidden h-8">
+                                                                <button
+                                                                    type="button"
+                                                                    className={`flex-1 text-[8px] font-black uppercase transition-all ${item.type === 'PRODUCT' ? 'bg-blue-600 text-white' : 'bg-white text-slate-400'}`}
+                                                                    onClick={() => handleUpdateItem(index, 'type', 'PRODUCT')}
+                                                                    disabled={isRestricted}
+                                                                >
+                                                                    Prod
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className={`flex-1 text-[8px] font-black uppercase transition-all ${item.type === 'SERVICE' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}
+                                                                    onClick={() => handleUpdateItem(index, 'type', 'SERVICE')}
+                                                                    disabled={isRestricted}
+                                                                >
+                                                                    Serv
+                                                                </button>
+                                                            </div>
                                                         </td>
-                                                        <td className="p-2 text-right"><input type="number" className="w-full p-1.5 text-right border border-slate-200 rounded bg-white text-sm font-bold" value={item.unitPrice} onChange={(e) => handleUpdateItem(index, 'unitPrice', Number(e.target.value))} disabled={isRestricted} /></td>
                                                         <td className="p-2 text-center">
                                                             <select
-                                                                className="w-full p-1.5 border border-slate-200 rounded bg-white text-xs font-bold"
+                                                                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-bold outline-none focus:ring-1 focus:ring-blue-500 appearance-none text-center"
                                                                 value={item.taxRate}
                                                                 onChange={(e) => handleUpdateItem(index, 'taxRate', Number(e.target.value))}
                                                                 disabled={isRestricted}
                                                             >
-                                                                {taxRates.length > 0 ? (
-                                                                    taxRates.map(tr => (
-                                                                        <option key={tr.id} value={tr.percentage}>{tr.name} ({tr.percentage}%)</option>
-                                                                    ))
-                                                                ) : (
-                                                                    <>
-                                                                        <option value={14}>IVA 14%</option>
-                                                                        <option value={7}>IVA 7%</option>
-                                                                        <option value={0}>IVA Isento</option>
-                                                                    </>
-                                                                )}
+                                                                <option value={14}>IVA 14%</option>
+                                                                <option value={7}>IVA 7%</option>
+                                                                <option value={5}>IVA 5%</option>
+                                                                <option value={2}>IVA 2%</option>
+                                                                <option value={0}>ISE 0%</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="p-2 text-center">
+                                                            <select className="w-full p-1.5 border border-slate-200 rounded bg-transparent text-[10px] font-bold" value={item.unit || 'un'} onChange={(e) => handleUpdateItem(index, 'unit', e.target.value)} disabled={isRestricted}>
+                                                                <option value="un">un</option>
+                                                                <option value="kg">kg</option>
+                                                                <option value="cx">cx</option>
+                                                                <option value="mês">mês</option>
+                                                                <option value="dia">dia</option>
                                                             </select>
                                                         </td>
                                                         <td className="p-2 text-center"><input type="number" className="w-full p-1.5 text-center border border-slate-200 rounded bg-white text-sm" value={item.discount} onChange={(e) => handleUpdateItem(index, 'discount', Number(e.target.value))} disabled={isRestricted} /></td>
-                                                        <td className="p-2 text-right font-black text-slate-700 text-sm">{formatCurrency(item.total).replace('Kz', '')}</td>
+                                                        <td className="p-2 text-right font-black text-slate-800 text-sm">{formatCurrency(item.total).replace('Kz', '')}</td>
                                                         {!isRestricted && <td className="p-2 text-center"><button onClick={() => handleRemoveItem(index)} className="text-slate-300 hover:text-red-500 p-1"><Trash size={16} /></button></td>}
                                                     </tr>
                                                     {item.showMetrics && (
@@ -646,7 +764,7 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-bold text-indigo-600 uppercase block mb-1 flex items-center gap-1"><Scale size={12} /> Retenção na Fonte (6,5%)</label>
-                                        <label className="flex items-center gap-2 cursor-pointer bg-indigo-50 p-2 rounded-lg border border-indigo-100"><input type="checkbox" checked={hasWithholding} onChange={e => setHasWithholding(e.target.checked)} className="w-4 h-4" disabled={true} /><span className="text-[9px] font-bold text-indigo-700 uppercase">Auto</span></label>
+                                        <label className="flex items-center gap-2 cursor-pointer bg-slate-100 p-2.5 rounded-2xl border border-slate-200"><input type="checkbox" checked={hasWithholding} readOnly className="w-4 h-4 accent-blue-600" /><span className="text-[10px] font-black text-slate-500 uppercase">Aplicação Automática AGT</span></label>
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="text-[10px] font-bold text-blue-800 uppercase block mb-1 flex items-center gap-1"><ShieldCheck size={12} /> Cativação de IVA</label>
@@ -663,15 +781,33 @@ const InvoiceForm: React.FC<InvoiceFormProps> = ({
                                     </div>
                                 </div>
 
-                                <div className="space-y-4 pt-2 border-t border-slate-100 text-[10px] uppercase font-bold">
-                                    <div className="flex justify-between text-slate-600"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
-                                    {globalDiscount > 0 && <div className="flex justify-between text-red-600"><span>Desc. Global</span><span>-{formatCurrency(discountGlobalValue)}</span></div>}
-                                    <div className="flex justify-between text-slate-600 pt-2"><span>Imposto (IVA)</span><span>{formatCurrency(taxAmount)}</span></div>
-                                    {hasWithholding && <div className="flex justify-between text-red-600"><span>Retenção 6,5%</span><span>-{formatCurrency(withholdingAmount)}</span></div>}
-                                    {retentionAmount > 0 && <div className="flex justify-between text-indigo-600"><span>Cativação IVA</span><span>-{formatCurrency(retentionAmount)}</span></div>}
-                                    <div className="pt-4 mt-4 border-t-2 border-slate-800 flex flex-col items-end gap-1">
-                                        <span className="font-bold text-[9px] text-slate-400 uppercase tracking-widest">Valor Final</span>
-                                        <span className="font-black text-xl text-blue-600 tracking-tighter leading-none">{formatCurrency(total)}</span>
+                                <div className="space-y-3 pt-4 border-t border-slate-200">
+                                    <div className="flex justify-between items-center bg-white p-3 border border-slate-200 rounded-xl">
+                                        <span className="text-[10px] font-black text-slate-500 uppercase">Subtotal</span>
+                                        <span className="font-black text-sm text-slate-800">{formatCurrency(subtotal)}</span>
+                                    </div>
+                                    {globalDiscount > 0 && (
+                                        <div className="flex justify-between items-center bg-white p-3 border border-slate-200 rounded-xl">
+                                            <span className="text-[10px] font-black text-red-500 uppercase">Desconto Global ({globalDiscount}%)</span>
+                                            <span className="font-black text-sm text-red-600">-{formatCurrency(discountGlobalValue)}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-center bg-white p-3 border border-slate-200 rounded-xl">
+                                        <span className="text-[10px] font-black text-slate-500 uppercase">Imposto (IVA)</span>
+                                        <span className="font-black text-sm text-slate-800">{formatCurrency(taxAmount)}</span>
+                                    </div>
+                                    {hasWithholding && (
+                                        <div className="flex justify-between items-center bg-white p-3 border border-slate-200 rounded-xl">
+                                            <span className="text-[10px] font-black text-red-500 uppercase">Retenção na Fonte (6,5%)</span>
+                                            <span className="font-black text-sm text-red-600">-{formatCurrency(withholdingAmount)}</span>
+                                        </div>
+                                    )}
+                                    <div className="pt-6 mt-4 border-t-2 border-slate-900 flex flex-col items-end gap-1">
+                                        <span className="font-black text-[11px] text-slate-400 uppercase tracking-[0.2em]">Total do Documento</span>
+                                        <span className="font-black text-3xl text-blue-700 tracking-tighter leading-none flex items-baseline gap-1">
+                                            <span className="text-sm font-bold opacity-50">Kz</span>
+                                            {formatCurrency(total).replace('Kz', '').trim()}
+                                        </span>
                                     </div>
                                 </div>
                             </div>

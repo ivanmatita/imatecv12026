@@ -236,40 +236,40 @@ const App = () => {
 
   const fetchEmployeesCloud = async () => {
     try {
-      const { data, error } = await supabase.from('employees').select('*');
+      const { data, error } = await supabase.from('funcionarios').select('*');
       if (error) throw error;
       if (data) {
         setHrEmployees(data.map((d: any) => ({
           id: d.id,
-          name: d.name,
+          name: d.nome,
           nif: d.nif,
-          idCardNumber: d.id_card_number,
-          birthDate: d.birth_date,
-          gender: d.gender,
-          maritalStatus: d.marital_status,
-          nationality: d.nationality,
+          idCardNumber: d.bi_number,
+          birthDate: d.data_nascimento,
+          gender: d.genero,
+          maritalStatus: d.estado_civil,
+          nationality: d.nacionalidade,
           email: d.email,
-          phone: d.phone,
-          address: d.address,
+          phone: d.telefone,
+          address: d.endereco,
           employeeNumber: d.employee_number,
-          role: d.role,
-          department: d.department,
-          admissionDate: d.admission_date,
-          contractType: d.contract_type,
+          role: d.cargo,
+          department: d.departamento,
+          admissionDate: d.data_admissao,
+          contractType: d.tipo_contrato,
           workLocationId: d.work_location_id,
           professionId: d.profession_id,
           status: d.status,
-          baseSalary: d.base_salary,
-          bankName: d.bank_name,
+          baseSalary: Number(d.salario_base || 0),
+          bankName: d.nome_banco,
           iban: d.iban,
           paymentMethod: d.payment_method,
-          socialSecurityNumber: d.social_security_number,
-          subsidyFood: d.subsidy_food,
-          subsidyTransport: d.subsidy_transport,
-          subsidyFamily: d.subsidy_family,
-          subsidyHousing: d.subsidy_housing,
-          allowances: d.allowances,
-          photoUrl: d.photo_url
+          socialSecurityNumber: d.ssn,
+          subsidyFood: Number(d.subs_alimentacao || 0),
+          subsidyTransport: Number(d.subs_transporte || 0),
+          subsidyFamily: Number(d.subs_familia || 0),
+          subsidyHousing: Number(d.subs_habitacao || 0),
+          allowances: Number(d.abonos || 0),
+          photoUrl: d.foto_url
         })));
       }
     } catch (err) { console.error("Erro ao carregar colaboradores:", err); }
@@ -702,30 +702,45 @@ const App = () => {
         finalInv.processedAt = new Date().toISOString();
 
         const typeKey = getDocumentPrefix(inv.type);
+        const seriesYear = docSeries?.year || new Date().getFullYear();
 
         try {
-          const { data: nextSeq, error: seqError } = await supabase.rpc('get_next_sequence', {
-            p_series_id: sId,
-            p_doc_type: typeKey
-          });
-
-          if (seqError) throw seqError;
+          // AGT CRITICAL: Get next official sequence from the new table
+          const nextSeq = await BackendAssistant.vendas.gerarNumeroSequencial(
+            typeKey,
+            docSeries?.code || 'S',
+            seriesYear
+          );
 
           const prefix = getDocumentPrefix(inv.type);
           // Format: FT S2026/1
-          const number = `${prefix} ${docSeries?.code || 'S'}${docSeries?.year}/${nextSeq}`;
+          const number = `${prefix} ${docSeries?.code || 'S'}${seriesYear}/${nextSeq}`;
+
+          // ANTI-DUPLICATION CHECK
+          const { data: existing } = await supabase
+            .from('faturas')
+            .select('id')
+            .eq('numero', number)
+            .single();
+
+          if (existing) {
+            alert(`ERRO CRÍTICO AGT: Já existe um documento com o número ${number}. Operação abortada para evitar duplicidade.`);
+            setIsLoading(false);
+            return;
+          }
 
           finalInv.number = number;
           finalInv.seriesCode = docSeries?.code;
+          finalInv.date = new Date().toISOString().split('T')[0]; // Ensure current date on certification
 
-          // Update local series state merely to reflect changes (optional but good for UI)
+          // Update local series state (optional)
           if (docSeries) {
             const updatedSequences = { ...docSeries.sequences, [typeKey]: nextSeq };
             setSeries(prev => prev.map(s => s.id === sId ? { ...s, sequences: updatedSequences } : s));
           }
 
         } catch (e: any) {
-          alert("Erro ao gerar sequência documental: " + e.message);
+          alert("Erro ao gerar sequência documental AGT: " + e.message);
           setIsLoading(false);
           return;
         }
@@ -947,14 +962,18 @@ const App = () => {
     const original = invoices.find(i => i.id === id);
     if (!original) return;
 
-    if (!window.confirm(`Deseja realmente ANULAR o documento ${original.number}? Esta ação gerará uma Nota de Crédito automaticamente.`)) return;
+    if (!window.confirm(`Deseja realmente ANULAR o documento ${original.number}? Esta ação gerará um documento de retificação automaticamente.`)) return;
 
     setIsLoading(true);
 
     try {
-      const seriesRec = series.find(s => s.id === original.seriesId) || series[0];
-      const typePrefix = "NC";
+      const isNC = original.type === InvoiceType.NC;
+      const correctiveType = isNC ? InvoiceType.ND : InvoiceType.NC;
+      const typePrefix = getDocumentPrefix(correctiveType);
 
+      const seriesRec = series.find(s => s.id === original.seriesId) || series[0];
+
+      // Get Sequence via RPC
       const { data: nextSeq, error: seqError } = await supabase.rpc('get_next_sequence', {
         p_series_id: ensureUUID(seriesRec.id),
         p_doc_type: typePrefix
@@ -962,105 +981,110 @@ const App = () => {
 
       if (seqError) throw seqError;
 
-      const ncNumber = `${typePrefix} ${seriesRec.code}${seriesRec.year}/${nextSeq}`;
+      const correctiveNumber = `${typePrefix} ${seriesRec.code}${seriesRec.year}/${nextSeq}`;
 
-      const ncId = generateId();
+      const correctiveId = generateId();
       const now = new Date();
-      // Create hash for NC - important for certification
-      const ncHash = generateInvoiceHash({ ...original, id: ncId, date: now.toISOString(), number: ncNumber, type: InvoiceType.NC });
 
-      const creditNote: Invoice = {
+      // Create hash for corrective document
+      const docHash = generateInvoiceHash({
         ...original,
-        id: ncId,
-        type: InvoiceType.NC,
-        number: ncNumber,
+        id: correctiveId,
+        date: now.toISOString(),
+        number: correctiveNumber,
+        type: correctiveType
+      });
+
+      const correctiveDoc: Invoice = {
+        ...original,
+        id: correctiveId,
+        type: correctiveType,
+        number: correctiveNumber,
         date: now.toISOString().split('T')[0],
         time: now.toLocaleTimeString(),
         status: InvoiceStatus.PAID,
         isCertified: true,
         sourceInvoiceId: original.id,
         cancellationReason: reason,
-        hash: ncHash,
+        hash: docHash,
         total: original.total,
         items: original.items.map(item => ({ ...item, id: generateId() })),
         operatorName: currentUser?.name,
         seriesId: seriesRec.id,
-        seriesCode: seriesRec.code
+        seriesCode: seriesRec.code,
+        integrationStatus: IntegrationStatus.VALIDATED
       };
 
-      setInvoices(prev => prev.map(i => i.id === id ? { ...i, status: InvoiceStatus.CANCELLED, cancellationReason: `Motivo: ${reason} (NC: ${ncNumber})` } : i).concat(creditNote));
+      setInvoices(prev => prev.map(i => i.id === id ? { ...i, status: InvoiceStatus.CANCELLED, cancellationReason: `Motivo: ${reason} (${typePrefix}: ${correctiveNumber})` } : i).concat(correctiveDoc));
 
-      // Update Original - CRITICAL: Must persist 'Anulado' and link to NC
-      // We store the NC number in the reason or a specific field if available to ensuring traceability (R7)
+      // Update Original in DB
       const updatePayload = {
         status: 'Anulado',
-        cancellation_reason: `Motivo: ${reason} | Nota de Crédito Gerada: ${ncNumber}`,
+        cancellation_reason: `Motivo: ${reason} | Retificação Gerada: ${correctiveNumber}`,
         updated_at: new Date().toISOString()
       };
 
       await supabase.from('faturas').update(updatePayload).eq('id', ensureUUID(id));
 
-      // Insert NC
+      // Insert Corrective Doc in DB
       const companyIdToUse = await getSecureEmpresaId();
 
-      const ncPayload = {
-        id: ensureUUID(ncId),
+      const syncPayload = {
+        id: ensureUUID(correctiveId),
         empresa_id: companyIdToUse,
-        cliente_id: ensureUUID(creditNote.clientId),
-        cliente_nome: creditNote.clientName,
-        cliente_nif: creditNote.clientNif,
-        numero: ncNumber,
-        tipo: 'NC',
-        data_emissao: creditNote.date,
-        data_vencimento: creditNote.dueDate,
-        data_contabilistica: creditNote.accountingDate,
-        hora_emissao: creditNote.time,
-        subtotal: Number(creditNote.subtotal),
-        desconto_global: Number(creditNote.globalDiscount),
-        taxa_iva: Number(creditNote.taxRate),
-        valor_iva: Number(creditNote.taxAmount),
-        valor_retencao: Number(creditNote.withholdingAmount),
-        total: Number(creditNote.total),
-        moeda: creditNote.currency || 'AOA',
-        taxa_cambio: Number(creditNote.exchangeRate) || 1,
-        itens: creditNote.items,
-        status: 'Pago', // NC is usually considered finalized/paid upon issuance
+        cliente_id: ensureUUID(correctiveDoc.clientId),
+        cliente_nome: correctiveDoc.clientName,
+        cliente_nif: correctiveDoc.clientNif,
+        numero: correctiveNumber,
+        tipo: typePrefix,
+        data_emissao: correctiveDoc.date,
+        data_vencimento: correctiveDoc.dueDate,
+        data_contabilistica: correctiveDoc.accountingDate,
+        hora_emissao: correctiveDoc.time,
+        subtotal: Number(correctiveDoc.subtotal),
+        desconto_global: Number(correctiveDoc.globalDiscount),
+        taxa_iva: Number(correctiveDoc.taxRate),
+        valor_iva: Number(correctiveDoc.taxAmount),
+        valor_retencao: Number(correctiveDoc.withholdingAmount),
+        total: Number(correctiveDoc.total),
+        moeda: correctiveDoc.currency || 'AOA',
+        taxa_cambio: Number(correctiveDoc.exchangeRate) || 1,
+        itens: correctiveDoc.items,
+        status: 'Pago',
         certificado: true,
-        origem: creditNote.source || 'MANUAL',
-        caixa_id: ensureUUID(creditNote.cashRegisterId),
-        metodo_pagamento: creditNote.paymentMethod,
-        documento_origem_id: ensureUUID(original.id), // Link to original
-        local_trabalho_id: ensureUUID(creditNote.workLocationId),
+        origem: correctiveDoc.source || 'MANUAL',
+        caixa_id: ensureUUID(correctiveDoc.cashRegisterId),
+        metodo_pagamento: correctiveDoc.paymentMethod,
+        documento_origem_id: ensureUUID(original.id),
+        local_trabalho_id: ensureUUID(correctiveDoc.workLocationId),
         serie_id: ensureUUID(seriesRec.id),
-        hash: ncHash,
+        hash: docHash,
         operador_nome: currentUser?.name
       };
 
-      const { error: ncError } = await supabase.from('faturas').insert(ncPayload);
-      if (ncError) throw ncError;
+      const { error: syncError } = await supabase.from('faturas').insert(syncPayload);
+      if (syncError) throw syncError;
 
-      // If original was paid and had stock movement, we might need to reverse stock? 
-      // NC usually implies stock return if items are products.
-      // Let's assume standard behavior: NC puts stock back ENTRADA.
-      if (creditNote.items.some(i => i.productId)) {
+      // Handle Stock Reversal
+      if (correctiveDoc.items.some(i => i.productId)) {
         const companyIdForStock = await getSecureEmpresaId();
-        for (const item of creditNote.items) {
+        for (const item of correctiveDoc.items) {
           if (item.productId && item.type === 'PRODUCT') {
             await supabase.from('movimentos_stock').insert({
-              tipo: 'ENTRY', // Return to stock
+              tipo: correctiveType === InvoiceType.NC ? 'ENTRY' : 'EXIT',
               produto_id: ensureUUID(item.productId),
               produto_nome: item.description,
               quantidade: item.quantity,
-              armazem_id: ensureUUID(creditNote.targetWarehouseId || ''),
-              documento_ref: creditNote.number,
-              notes: `Devolução Ref: ${creditNote.number}`,
+              armazem_id: ensureUUID(correctiveDoc.targetWarehouseId || ''),
+              documento_ref: correctiveDoc.number,
+              notes: `Retificação Ref: ${correctiveDoc.number} (Origem: ${original.number})`,
               empresa_id: companyIdForStock
             });
           }
         }
       }
 
-      alert(`Documento anulado com sucesso! Nota de Crédito gerada: ${ncNumber}`);
+      alert(`Documento anulado com sucesso! ${isNC ? 'Nota de Débito' : 'Nota de Crédito'} gerada: ${correctiveNumber}`);
 
     } catch (e: any) {
       console.error(e);
@@ -1618,64 +1642,68 @@ const App = () => {
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
-      <Sidebar
-        currentView={currentView}
-        onChangeView={setCurrentView}
-        isOpen={isSidebarOpen}
-        setIsOpen={setIsSidebarOpen}
-        currentUser={currentUser}
-      />
+      {currentView !== 'CREATE_INVOICE' && (
+        <Sidebar
+          currentView={currentView}
+          onChangeView={setCurrentView}
+          isOpen={isSidebarOpen}
+          setIsOpen={setIsSidebarOpen}
+          currentUser={currentUser}
+        />
+      )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-200 h-24 flex items-center justify-between px-6 shadow-md shrink-0 z-10">
-          <div className="flex items-center gap-6">
-            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded transition-colors"><Menu /></button>
-            <div className="flex items-center gap-4 border-r pr-6 border-slate-200 h-16">
-              <div className="w-16 h-16 bg-blue-900 rounded-xl flex items-center justify-center text-white font-black text-3xl shadow-xl transform hover:scale-105 transition-all">
-                IM
+        {currentView !== 'CREATE_INVOICE' && (
+          <header className="bg-white border-b border-slate-200 h-24 flex items-center justify-between px-6 shadow-md shrink-0 z-10">
+            <div className="flex items-center gap-6">
+              <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded transition-colors"><Menu /></button>
+              <div className="flex items-center gap-4 border-r pr-6 border-slate-200 h-16">
+                <div className="w-16 h-16 bg-blue-900 rounded-xl flex items-center justify-center text-white font-black text-3xl shadow-xl transform hover:scale-105 transition-all">
+                  IM
+                </div>
+                <div className="hidden lg:block">
+                  <h2 className="font-black text-xl text-slate-900 leading-none tracking-tighter">IMATEC SOFTWARE</h2>
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-[3px] mt-1">Sistemas de Gestão</p>
+                </div>
               </div>
-              <div className="hidden lg:block">
-                <h2 className="font-black text-xl text-slate-900 leading-none tracking-tighter">IMATEC SOFTWARE</h2>
-                <p className="text-[10px] font-black text-blue-600 uppercase tracking-[3px] mt-1">Sistemas de Gestão</p>
-              </div>
-            </div>
-            <div className="hidden xl:flex flex-col">
-              <h2 className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-1">Empresa Licenciada</h2>
-              <h2 className="font-bold text-slate-700 tracking-tight text-sm truncate max-w-[300px]">{currentCompany.name}</h2>
-            </div>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-3 bg-slate-900 text-white px-4 py-2 rounded-xl shadow-lg border border-slate-800">
-              <ClockIcon size={16} className="text-blue-400 animate-pulse" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black uppercase text-slate-400 leading-none mb-0.5">Hora Local</span>
-                <span className="font-mono font-bold text-sm tracking-widest">
-                  {currentTime.toLocaleTimeString('pt-AO', { hour12: false })}
-                </span>
+              <div className="hidden xl:flex flex-col">
+                <h2 className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-1">Empresa Licenciada</h2>
+                <h2 className="font-bold text-slate-700 tracking-tight text-sm truncate max-w-[300px]">{currentCompany.name}</h2>
               </div>
             </div>
-            {isLoading && (
-              <div className="flex items-center gap-2 text-xs text-blue-600 font-bold bg-blue-50 px-3 py-1 rounded-full animate-pulse border border-blue-100">
-                <Loader2 size={12} className="animate-spin" /> Sincronizando...
+            <div className="flex items-center gap-6">
+              <div className="hidden md:flex items-center gap-3 bg-slate-900 text-white px-4 py-2 rounded-xl shadow-lg border border-slate-800">
+                <ClockIcon size={16} className="text-blue-400 animate-pulse" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black uppercase text-slate-400 leading-none mb-0.5">Hora Local</span>
+                  <span className="font-mono font-bold text-sm tracking-widest">
+                    {currentTime.toLocaleTimeString('pt-AO', { hour12: false })}
+                  </span>
+                </div>
               </div>
-            )}
-            <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1 px-2 border hover:border-slate-300 transition-all shadow-inner">
-              <CalendarIcon size={14} className="text-slate-500" />
-              <select className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer" value={globalYear} onChange={(e) => setGlobalYear(Number(e.target.value))}>
-                <option value={2024}>2024</option><option value={2025}>2025</option>
-              </select>
+              {isLoading && (
+                <div className="flex items-center gap-2 text-xs text-blue-600 font-bold bg-blue-50 px-3 py-1 rounded-full animate-pulse border border-blue-100">
+                  <Loader2 size={12} className="animate-spin" /> Sincronizando...
+                </div>
+              )}
+              <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1 px-2 border hover:border-slate-300 transition-all shadow-inner">
+                <CalendarIcon size={14} className="text-slate-500" />
+                <select className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer" value={globalYear} onChange={(e) => setGlobalYear(Number(e.target.value))}>
+                  <option value={2024}>2024</option><option value={2025}>2025</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-black text-slate-900 leading-none">{currentUser?.name || "Administrador"}</p>
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">{currentUser?.role || "ADMIN"}</p>
+                </div>
+                <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center text-white font-black text-lg border-2 border-slate-100 shadow-lg transition-transform hover:scale-110 cursor-pointer">
+                  {(currentUser?.name || 'A').charAt(0)}
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-black text-slate-900 leading-none">{currentUser?.name || "Administrador"}</p>
-                <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">{currentUser?.role || "ADMIN"}</p>
-              </div>
-              <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center text-white font-black text-lg border-2 border-slate-100 shadow-lg transition-transform hover:scale-110 cursor-pointer">
-                {(currentUser?.name || 'A').charAt(0)}
-              </div>
-            </div>
-          </div>
-        </header>
+          </header>
+        )}
 
         <main className="flex-1 overflow-auto p-4 md:p-6 relative">
           {renderView()}

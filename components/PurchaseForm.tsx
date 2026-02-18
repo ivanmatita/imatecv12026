@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Supplier, Purchase, PurchaseItem, PurchaseType, Product, Warehouse, PaymentMethod, Company } from '../types';
 import { generateId, formatCurrency, formatDate } from '../utils';
-import { Plus, Trash, Save, ArrowLeft, FileText, List, X, Calendar, ChevronDown, ChevronUp, Ruler, Users, Briefcase, Percent, DollarSign, RefreshCw, Scale, ShieldCheck, Hash, Tag, UserPlus, Loader2, Package, AlertCircle, MapPin } from 'lucide-react';
+import { Plus, Trash, Save, ArrowLeft, FileText, List, X, Calendar, ChevronDown, ChevronUp, Ruler, Users, Briefcase, Percent, DollarSign, RefreshCw, Scale, ShieldCheck, Hash, Tag, UserPlus, Loader2, Package, AlertCircle, MapPin, Search } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
+import { useClickOutside } from '../services/hooks';
 
 interface PurchaseFormProps {
     onSave: (purchase: Purchase) => void;
@@ -16,6 +18,75 @@ interface PurchaseFormProps {
     currentCompany?: Company;
 }
 
+
+const SearchableSelect = ({ label, value, onChange, options, disabled, placeholder }: { label: string, value: string, onChange: (val: string) => void, options: { value: string, label: string }[], disabled?: boolean, placeholder?: string }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const containerRef = React.useRef<HTMLDivElement>(null);
+
+    const filteredOptions = useMemo(() =>
+        options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase())),
+        [options, searchTerm]);
+
+    const selectedOption = options.find(opt => opt.value === value);
+
+    // REMOVED useClickOutside to prevent closing on focus loss
+    // useClickOutside(containerRef, () => setIsOpen(false));
+
+    return (
+        <div className="mb-4 relative" ref={containerRef}>
+            <label className="block text-sm font-bold text-slate-700 mb-1 leading-tight">
+                {label}
+            </label>
+            <div
+                onClick={() => !disabled && setIsOpen(true)}
+                className={`w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold flex justify-between items-center transition-all ${disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-50/50 text-slate-800 hover:border-blue-400 cursor-pointer'}`}
+            >
+                <span className="truncate">{selectedOption ? selectedOption.label : (placeholder || `Selecione ${label.toLowerCase()}...`)}</span>
+                <ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </div>
+            {isOpen && (
+                <div className="absolute z-[100] w-full mt-1 bg-white border border-slate-300 rounded-md shadow-2xl animate-in fade-in slide-in-from-top-2">
+                    <div className="p-2 border-b bg-slate-50">
+                        <div className="relative">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <input
+                                autoFocus
+                                className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-medium"
+                                placeholder="Pesquisar..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+                    </div>
+                    {/* Removed max-h-60 and overflow-y-auto to show all items */}
+                    <div className="">
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map(opt => (
+                                <div
+                                    key={opt.value}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onChange(opt.value);
+                                        setIsOpen(false);
+                                        setSearchTerm('');
+                                    }}
+                                    className={`px-4 py-2.5 text-sm font-bold cursor-pointer transition-colors ${value === opt.value ? 'bg-blue-600 text-white' : 'hover:bg-blue-50 text-slate-700'}`}
+                                >
+                                    {opt.label}
+                                </div>
+                            ))
+                        ) : (
+                            <div className="px-4 py-3 text-sm text-slate-400 italic text-center">Nenhum resultado encontrado</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const PurchaseForm: React.FC<PurchaseFormProps> = ({
     onSave, onCancel, onViewList, suppliers, products, warehouses, initialData, currentUser, currentUserId, currentCompany
 }) => {
@@ -25,6 +96,45 @@ const PurchaseForm: React.FC<PurchaseFormProps> = ({
     const [documentHash, setDocumentHash] = useState(initialData?.documentHash || '');
     const [warehouseId, setWarehouseId] = useState(initialData?.warehouseId || '');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>(initialData?.paymentMethod || '');
+
+    const [listaSuppliers, setListaSuppliers] = useState<Supplier[]>(suppliers);
+    const [listaProducts, setListaProducts] = useState<Product[]>(products);
+
+    useEffect(() => {
+        async function fetchInitialData() {
+            const { data: dbSuppliers } = await supabase.from("fornecedores").select("*").order("nome", { ascending: true });
+            if (dbSuppliers) {
+                setListaSuppliers(dbSuppliers.map((s: any) => ({
+                    id: s.id,
+                    name: s.nome,
+                    vatNumber: s.nif,
+                    email: s.email || '',
+                    phone: s.telefone || '',
+                    address: s.endereco || '',
+                    city: s.localidade || '',
+                    province: s.provincia || '',
+                    country: 'Angola',
+                    accountBalance: 0,
+                    supplierType: s.tipo_fornecedor || 'Nacional',
+                    transactions: []
+                })));
+            }
+
+            const { data: dbProdutos } = await supabase.from("produtos").select("*").order("descricao", { ascending: true });
+            if (dbProdutos) {
+                setListaProducts(dbProdutos.map((p: any) => ({
+                    id: p.id,
+                    name: p.descricao,
+                    costPrice: p.preco_custo || 0,
+                    price: p.preco_venda || 0,
+                    unit: p.unidade || 'un',
+                    category: p.categoria || 'Geral',
+                    stock: p.quantidade_stock || 0
+                })));
+            }
+        }
+        fetchInitialData();
+    }, [suppliers, products]);
 
     const today = new Date().toISOString().split('T')[0];
     const [date, setDate] = useState(initialData?.date || today);
@@ -96,7 +206,7 @@ const PurchaseForm: React.FC<PurchaseFormProps> = ({
     };
 
     const handleProductSelect = (index: number, productId: string) => {
-        const product = products.find(p => p.id === productId);
+        const product = listaProducts.find(p => p.id === productId);
         if (product) {
             const newItems = [...items];
             const unitPrice = product.price;
@@ -104,7 +214,7 @@ const PurchaseForm: React.FC<PurchaseFormProps> = ({
                 ...newItems[index],
                 productId: product.id,
                 description: product.name,
-                reference: product.barcode || product.id.substring(0, 6).toUpperCase(),
+                reference: product.id.substring(0, 8).toUpperCase(),
                 unit: product.unit || 'un',
                 unitPrice: unitPrice,
                 total: calculateLineTotal(newItems[index].quantity, newItems[index].length, newItems[index].width, newItems[index].height, unitPrice, newItems[index].discount)
@@ -132,33 +242,32 @@ const PurchaseForm: React.FC<PurchaseFormProps> = ({
         if (!documentNumber) return alert("Erro: Número do Documento é obrigatório.");
         if (items.length === 0) return alert("Erro: O documento deve conter pelo menos um item.");
 
+        const selectedSupplier = listaSuppliers.find(s => s.id === supplierId);
+
         const newPurchase: Purchase = {
             id: initialData?.id || generateId(),
             type: purchaseType,
             documentNumber,
-            documentHash,
+            hash: documentHash,
             date,
-            time: new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
             dueDate,
-            accountingDate,
             supplierId,
-            supplierName: suppliers.find(s => s.id === supplierId)?.name || 'Fornecedor',
-            supplierNif: suppliers.find(s => s.id === supplierId)?.vatNumber,
+            supplier: selectedSupplier?.name || 'Fornecedor',
+            nif: selectedSupplier?.vatNumber || '',
             items,
             subtotal,
-            globalDiscount,
             taxAmount: totalTaxAmount,
             total: totalFinal,
+            globalDiscount,
             currency,
             exchangeRate,
-            contraValue,
+            status: 'PENDING',
             notes,
-            companyId: currentCompany?.id || '',
             warehouseId,
             paymentMethod: paymentMethod || undefined,
-            operatorName: currentUser,
             source: 'MANUAL'
-        };
+        } as Purchase;
+
         onSave(newPurchase);
     };
 
@@ -194,10 +303,12 @@ const PurchaseForm: React.FC<PurchaseFormProps> = ({
                         {expandedSections.documentData && (
                             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white animate-in slide-in-from-top-2">
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-600 block mb-1">Tipo de Documento</label>
-                                    <select className="w-full border border-slate-300 p-2.5 rounded-2xl outline-none focus:border-blue-500 bg-slate-50" value={purchaseType} onChange={(e) => setPurchaseType(e.target.value as PurchaseType)}>
-                                        {Object.values(PurchaseType).map(t => <option key={t} value={t}>{t}</option>)}
-                                    </select>
+                                    <SearchableSelect
+                                        label="Tipo de Documento"
+                                        value={purchaseType}
+                                        onChange={(val) => setPurchaseType(val as PurchaseType)}
+                                        options={Object.values(PurchaseType).map(t => ({ value: t, label: t }))}
+                                    />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-600 block mb-1">Armazém de Destino</label>
@@ -251,10 +362,13 @@ const PurchaseForm: React.FC<PurchaseFormProps> = ({
                         </button>
                         {expandedSections.supplierData && (
                             <div className="p-6 bg-white animate-in slide-in-from-top-2">
-                                <select className={`w-full border p-3 rounded-2xl outline-none ${!supplierId ? 'border-red-300' : 'border-slate-300'}`} value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-                                    <option value="">-- SELECIONAR FORNECEDOR (GESTÃO DE FORNECEDORES) * --</option>
-                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} (NIF: {s.vatNumber})</option>)}
-                                </select>
+                                <SearchableSelect
+                                    label="Fornecedor *"
+                                    placeholder="Pesquisar fornecedor..."
+                                    options={listaSuppliers.map(s => ({ value: s.id, label: `${s.name} (NIF: ${s.vatNumber})` }))}
+                                    value={supplierId}
+                                    onChange={setSupplierId}
+                                />
                             </div>
                         )}
                     </div>
@@ -294,11 +408,15 @@ const PurchaseForm: React.FC<PurchaseFormProps> = ({
                                                         <td className="p-2"><input className="w-full p-1 border border-slate-200 rounded text-[10px] font-mono focus:ring-1 focus:ring-blue-500 outline-none" placeholder="Referência" value={item.reference || ''} onChange={e => handleUpdateItem(index, 'reference', e.target.value)} /></td>
                                                         <td className="p-2">
                                                             <div className="flex flex-col gap-1">
-                                                                <select className="w-full p-1 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none font-bold text-blue-700 bg-blue-50" onChange={(e) => handleProductSelect(index, e.target.value)} value={item.productId || ''}>
-                                                                    <option value="">-- SELECIONAR ARTIGO (STOCK REAL) * --</option>
-                                                                    {products.map(p => (
+                                                                <select
+                                                                    className="w-full p-1 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none font-bold text-blue-700 bg-blue-50"
+                                                                    onChange={(e) => handleProductSelect(index, e.target.value)}
+                                                                    value={item.productId || ''}
+                                                                >
+                                                                    <option value="">-- SELECIONAR ARTIGO --</option>
+                                                                    {listaProducts.map(p => (
                                                                         <option key={p.id} value={p.id}>
-                                                                            {p.id.substring(0, 8).toUpperCase()} | {p.name} | STOCK: {p.stock} {p.unit}
+                                                                            {p.name} | STOCK: {p.stock} {p.unit}
                                                                         </option>
                                                                     ))}
                                                                 </select>
