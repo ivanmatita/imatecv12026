@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import InvoiceList from './components/InvoiceList';
-import InvoiceForm from './components/InvoiceForm';
+import NewDocumentForm from './components/NewDocumentForm';
 import { supabase } from './services/supabaseClient';
 import LandingPage from './components/LandingPage';
 import PurchaseList from './components/PurchaseList';
@@ -576,13 +576,9 @@ const App: React.FC = () => {
                     series={series}
                 />;
             case 'CREATE_INVOICE':
-                return <InvoiceForm
+                return <NewDocumentForm
                     onSave={handleSaveInvoice}
                     onCancel={() => setCurrentView('INVOICES')}
-                    onViewList={() => setCurrentView('INVOICES')}
-                    onAddWorkLocation={() => setCurrentView('SETTINGS')}
-                    onSaveClient={(c) => setClients([...clients, c])}
-                    onSaveWorkLocation={(wl) => setWorkLocations([...workLocations, wl])}
                     clients={clients}
                     products={products}
                     workLocations={workLocations}
@@ -593,6 +589,7 @@ const App: React.FC = () => {
                     initialData={invoiceInitialData}
                     currentUser={currentUser.name}
                     currentUserId={currentUser.id}
+                    currentCompany={MOCK_COMPANY}
                 />;
             case 'PURCHASES':
                 return <PurchaseList
