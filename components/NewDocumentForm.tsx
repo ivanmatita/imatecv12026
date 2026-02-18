@@ -284,13 +284,30 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
                 return alert("Não foi possível verificar a sequência documental. Contacte o suporte.");
             }
 
-            if (!seqData || seqData.length === 0) {
-                setIsLoading(false);
-                // Friendly message as requested
-                return alert("Série selecionada não possui sequência configurada para o ano atual.");
-            }
+            let sequencia = (seqData && seqData.length > 0) ? seqData[0] : null;
 
-            const sequencia = seqData[0];
+            if (!sequencia) {
+                // AUTO-CREATE SEQUENCE if missing, as requested.
+                // NOTE: Schema check (Step 363) showed 'documento_sequencias' has columns: ano, id, ultimo_numero, tipo_documento, serie.
+                // It DOES NOT have 'series_id'. So we MUST NOT send 'series_id' or we get 400.
+                const { data: newSeq, error: createSeqError } = await supabase
+                    .from("documento_sequencias")
+                    .insert({
+                        tipo_documento: docTypeCode,
+                        serie: selectedSeries.code, // Use Series CODE (Text column)
+                        ano: currentYear,
+                        ultimo_numero: 0
+                    })
+                    .select("*")
+                    .single();
+
+                if (createSeqError) {
+                    console.error("Erro ao criar sequência automática:", createSeqError);
+                    setIsLoading(false);
+                    return alert("Erro ao inicializar sequência. Contacte suporte.");
+                }
+                sequencia = newSeq;
+            }
             const novoNumero = (sequencia.ultimo_numero || 0) + 1;
             const docPrefix = formData.invoiceType; // or use docTypeCode if you prefer shorthand in number
             // User existing logic used formData.invoiceType (full name? 'Fatura'?) 
