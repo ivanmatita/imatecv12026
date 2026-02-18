@@ -263,29 +263,55 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
             const currentYear = new Date().getFullYear();
             const docTypeCode = getInvoiceTypeCode(formData.invoiceType);
 
-            // Try matching by Description first, then Code if that fails (or logic assumes one)
-            // But based on 400 error, DB likely expects the Code (e.g. 'FT', 'PP')
-            const { data: sequencia, error: seqError } = await supabase
+            const selectedSeries = series.find(s => s.id === formData.seriesId);
+            if (!selectedSeries) {
+                setIsLoading(false);
+                return alert("Erro: Série inválida ou não selecionada.");
+            }
+
+            // Safe query: use Series CODE (as 'serie' column is text) and handling empty results manually
+            const { data: seqData, error: seqError } = await supabase
                 .from("documento_sequencias")
                 .select("*")
-                .eq("tipo_documento", docTypeCode) // Changed to use Code
-                .eq("serie", formData.seriesId) // Correct column name is 'serie' based on schema
-                .eq("ano", currentYear)
-                .single();
+                .eq("tipo_documento", docTypeCode)
+                .eq("serie", selectedSeries.code) // Use Code, validated by schema type TEXT
+                .eq("ano", currentYear) // Validated integer
+                .limit(1);
 
-            if (seqError || !sequencia) throw new Error("Série ou Sequência não configurada para este ano.");
+            if (seqError) {
+                console.error("Erro técnico verificação sequência:", seqError);
+                setIsLoading(false);
+                return alert("Não foi possível verificar a sequência documental. Contacte o suporte.");
+            }
 
+            if (!seqData || seqData.length === 0) {
+                setIsLoading(false);
+                // Friendly message as requested
+                return alert("Série selecionada não possui sequência configurada para o ano atual.");
+            }
+
+            const sequencia = seqData[0];
             const novoNumero = (sequencia.ultimo_numero || 0) + 1;
-            const docPrefix = formData.invoiceType;
+            const docPrefix = formData.invoiceType; // or use docTypeCode if you prefer shorthand in number
+            // User existing logic used formData.invoiceType (full name? 'Fatura'?) 
+            // Usually doc number is 'FT 2026/1'. 
+            // If formData.invoiceType is 'Fatura', number is 'Fatura / 1'.
+            // Let's stick to existing simple prefix logic but careful if it needs Code.
+            // App.tsx 'getDocumentPrefix' maps to 'FT', 'FR'.
+            // Here we construct 'fullDocNumber' for duplication check.
             const fullDocNumber = `${docPrefix} / ${novoNumero}`;
 
             const { data: duplicado } = await supabase
                 .from("faturas")
                 .select("id")
                 .eq("numero", fullDocNumber)
-                .eq("serie_id", formData.seriesId); // Correct column name is 'serie_id' based on schema
+                .eq("serie_id", formData.seriesId)
+                .limit(1);
 
-            if (duplicado && duplicado.length > 0) throw new Error("Número de documento duplicado detectado no sistema!");
+            if (duplicado && duplicado.length > 0) {
+                setIsLoading(false);
+                return alert("Número de documento duplicado detectado no sistema!");
+            }
 
             const invoiceObj = {
                 id: generateId(),

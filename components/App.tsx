@@ -777,8 +777,9 @@ const App = () => {
           if (item.productId && item.type === 'PRODUCT') {
             try {
               const prodUUID = ensureUUID(item.productId);
-              const whUUID = ensureUUID(finalInv.targetWarehouseId || '');
-              if (prodUUID) {
+              const whUUID = ensureUUID(finalInv.targetWarehouseId || ''); // If empty, returns null
+              // STRICT VALIDATION to prevent 400 Bad Request
+              if (prodUUID && whUUID && (item.quantity || 0) > 0) {
                 await supabase.from('movimentos_stock').insert({
                   tipo: finalInv.type === InvoiceType.NC ? 'ENTRY' : 'EXIT',
                   produto_id: prodUUID,
@@ -789,6 +790,9 @@ const App = () => {
                   notes: `Baixa Automática POS/Fatura: ${finalInv.number}`,
                   empresa_id: companyIdForStock
                 });
+              } else {
+                // Log warning internally but DO NOT throw error to user
+                console.warn("Stock movement skipped: Missing Warehouse ID or Invalid Quantity", { prodUUID, whUUID, qty: item.quantity });
               }
             } catch (e) { console.error("Erro stock:", e); }
           }
@@ -889,18 +893,20 @@ const App = () => {
             const prodUUID = ensureUUID(item.productId);
             const targetWarehouse = item.warehouseId || finalPurchase.warehouseId;
             const whUUID = ensureUUID(targetWarehouse || '');
-            if (prodUUID) {
+            if (prodUUID && whUUID && (item.quantity || 0) > 0) {
               await supabase.from('movimentos_stock').insert({
                 tipo: 'ENTRY',
                 produto_id: prodUUID,
                 produto_nome: item.description,
                 quantidade: item.quantity,
-                armazem_id: whUUID,
+                armazem_id: whUUID, // whUUID ensures valid UUID or null; check prevents insertion if null
                 documento_ref: finalPurchase.documentNumber,
                 notas: `Entrada Automática Compra: ${finalPurchase.documentNumber}`,
                 expiry_date: item.expiryDate || null,
                 empresa_id: companyIdForStockPur
               });
+            } else {
+              console.warn("Stock Purchase skipped: No Warehouse or Invalid Qty", { prod: prodUUID, wh: whUUID });
             }
           } catch (e) { console.error("Erro stock compra:", e); }
         }
