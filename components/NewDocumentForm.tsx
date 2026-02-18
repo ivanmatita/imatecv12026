@@ -269,7 +269,7 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
                 .from("documento_sequencias")
                 .select("*")
                 .eq("tipo_documento", docTypeCode) // Changed to use Code
-                .eq("serie_id", formData.seriesId)
+                .eq("series_id", formData.seriesId) // Changed from serie_id to series_id
                 .eq("ano", currentYear)
                 .single();
 
@@ -518,7 +518,7 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
                                                     <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Descrição</label>
                                                     <input
                                                         type="text"
-                                                        value={item.description}
+                                                        value={item.description || ''}
                                                         onChange={(e) => handleItemChange(index, 'description', e.target.value)}
                                                         className="w-full px-3 py-2 border border-slate-200 rounded focus:outline-none focus:border-blue-500 font-bold text-sm"
                                                     />
