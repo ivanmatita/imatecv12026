@@ -247,6 +247,12 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
 
     const total = taxableBase + taxAmount - withholdingAmount;
 
+    // Helper to get enum key from value
+    const getInvoiceTypeCode = (val: string): string => {
+        const entry = Object.entries(InvoiceType).find(([k, v]) => v === val);
+        return entry ? entry[0] : val;
+    };
+
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!formData.clientId) return alert("Selecione um cliente.");
@@ -255,10 +261,14 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
         setIsLoading(true);
         try {
             const currentYear = new Date().getFullYear();
+            const docTypeCode = getInvoiceTypeCode(formData.invoiceType);
+
+            // Try matching by Description first, then Code if that fails (or logic assumes one)
+            // But based on 400 error, DB likely expects the Code (e.g. 'FT', 'PP')
             const { data: sequencia, error: seqError } = await supabase
                 .from("documento_sequencias")
                 .select("*")
-                .eq("tipo_documento", formData.invoiceType)
+                .eq("tipo_documento", docTypeCode) // Changed to use Code
                 .eq("serie_id", formData.seriesId)
                 .eq("ano", currentYear)
                 .single();
@@ -528,7 +538,7 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
 
                                                 <div className="col-span-2">
                                                     <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Qtd</label>
-                                                    <input type="number" value={item.quantity} onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))} className="w-full px-2 py-2 border border-slate-200 rounded font-bold text-sm text-center" />
+                                                    <input type="number" value={item.quantity ?? 0} onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))} className="w-full px-2 py-2 border border-slate-200 rounded font-bold text-sm text-center" />
                                                 </div>
                                                 <div className="col-span-2">
                                                     <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Unidade</label>
@@ -538,18 +548,18 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
                                                 </div>
                                                 <div className="col-span-3">
                                                     <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Preço Un.</label>
-                                                    <input type="number" value={item.unitPrice} onChange={(e) => handleItemChange(index, 'unitPrice', Number(e.target.value))} className="w-full px-2 py-2 border border-slate-200 rounded font-bold text-sm text-right" />
+                                                    <input type="number" value={item.unitPrice ?? 0} onChange={(e) => handleItemChange(index, 'unitPrice', Number(e.target.value))} className="w-full px-2 py-2 border border-slate-200 rounded font-bold text-sm text-right" />
                                                 </div>
                                                 <div className="col-span-2">
                                                     <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Imposto</label>
-                                                    <select value={item.taxRate} onChange={(e) => handleItemChange(index, 'taxRate', Number(e.target.value))} className="w-full px-2 py-2 border border-slate-200 rounded font-bold text-xs">
+                                                    <select value={item.taxRate ?? 14} onChange={(e) => handleItemChange(index, 'taxRate', Number(e.target.value))} className="w-full px-2 py-2 border border-slate-200 rounded font-bold text-xs">
                                                         {taxRates?.map(t => <option key={t.id} value={t.percentage}>{t.percentage}%</option>) || <option value={14}>14%</option>}
                                                         <option value={0}>0%</option><option value={7}>7%</option>
                                                     </select>
                                                 </div>
                                                 <div className="col-span-2">
                                                     <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Desc%</label>
-                                                    <input type="number" value={item.discount} onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))} className="w-full px-2 py-2 border border-slate-200 rounded font-bold text-sm text-center" />
+                                                    <input type="number" value={item.discount ?? 0} onChange={(e) => handleItemChange(index, 'discount', Number(e.target.value))} className="w-full px-2 py-2 border border-slate-200 rounded font-bold text-sm text-center" />
                                                 </div>
                                                 <div className="col-span-1 flex items-end justify-center pb-2">
                                                     <button onClick={() => handleRemoveItem(index)} className="text-slate-300 hover:text-red-500 transition"><Trash size={18} /></button>
@@ -574,15 +584,15 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
                                                 <div className="grid grid-cols-3 gap-3 mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100 animate-in slide-in-from-top-2">
                                                     <div>
                                                         <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Comp. (m)</label>
-                                                        <input type="number" step="0.01" value={item.length || 1} onChange={(e) => handleItemChange(index, 'length', Number(e.target.value))} className="w-full px-2 py-1 border border-slate-200 rounded font-bold text-xs" />
+                                                        <input type="number" step="0.01" value={item.length ?? 1} onChange={(e) => handleItemChange(index, 'length', Number(e.target.value))} className="w-full px-2 py-1 border border-slate-200 rounded font-bold text-xs" />
                                                     </div>
                                                     <div>
                                                         <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Larg. (m)</label>
-                                                        <input type="number" step="0.01" value={item.width || 1} onChange={(e) => handleItemChange(index, 'width', Number(e.target.value))} className="w-full px-2 py-1 border border-slate-200 rounded font-bold text-xs" />
+                                                        <input type="number" step="0.01" value={item.width ?? 1} onChange={(e) => handleItemChange(index, 'width', Number(e.target.value))} className="w-full px-2 py-1 border border-slate-200 rounded font-bold text-xs" />
                                                     </div>
                                                     <div>
                                                         <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Alt. (m)</label>
-                                                        <input type="number" step="0.01" value={item.height || 1} onChange={(e) => handleItemChange(index, 'height', Number(e.target.value))} className="w-full px-2 py-1 border border-slate-200 rounded font-bold text-xs" />
+                                                        <input type="number" step="0.01" value={item.height ?? 1} onChange={(e) => handleItemChange(index, 'height', Number(e.target.value))} className="w-full px-2 py-1 border border-slate-200 rounded font-bold text-xs" />
                                                     </div>
                                                 </div>
                                             )}
