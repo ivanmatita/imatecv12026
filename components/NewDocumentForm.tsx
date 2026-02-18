@@ -269,7 +269,7 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
                 .from("documento_sequencias")
                 .select("*")
                 .eq("tipo_documento", docTypeCode) // Changed to use Code
-                .eq("series_id", formData.seriesId) // Changed from serie_id to series_id
+                .eq("serie", formData.seriesId) // Correct column name is 'serie' based on schema
                 .eq("ano", currentYear)
                 .single();
 
@@ -283,7 +283,7 @@ const NewDocumentForm: React.FC<NewDocumentFormProps> = ({
                 .from("faturas")
                 .select("id")
                 .eq("numero", fullDocNumber)
-                .eq("series_id", formData.seriesId);
+                .eq("serie_id", formData.seriesId); // Correct column name is 'serie_id' based on schema
 
             if (duplicado && duplicado.length > 0) throw new Error("Número de documento duplicado detectado no sistema!");
 
